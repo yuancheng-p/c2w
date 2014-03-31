@@ -5,6 +5,8 @@ import logging
 from packet import Packet
 import util
 from tables import type_code, error_code
+from tables import room_type
+from tables import status_code
 from data_strucs import Movie, User
 from config import attempt_num, timeout
 from twisted.internet import reactor
@@ -69,22 +71,23 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         DatagramProtocol.transport = self.transport
 
     def sendPacket(self, packet, (host, port), callCount=0):
-        # user is not registered: loginError packet
-        if packet.userId == 0 and packet.ack == 1:
-            print "###sending packet### : ", packet
+        # send an ack packet to registered or non registered user
+        # ack packet is sent only once
+        if packet.ack == 1:
+            print "###sending ACK packet### : ", packet
             buf = util.packMsg(packet)
             self.transport.write(buf, (host, port))
             return
+
+        # not ack packet, set timeout and send later if packet is not received
+        # when an un-ack packet is received, we stop the timeout
+        print "packet.seqNum: ",packet.seqNum, " ## ", "self.seqNums[packet.userId(", packet.userId, ")]: ", self.seqNums[packet.userId]
         if packet.seqNum != self.seqNums[packet.userId]:  # packet is received
             return
         print "###sending packet### : ", packet
         buf = util.packMsg(packet)
         self.transport.write(buf, (host, port))
 
-        if packet.ack == 1:
-            return
-
-        # not ack packet, set timeout and send later if packet is not received
         callCount += 1
         if callCount < attempt_num:
             reactor.callLater(timeout, self.sendPacket,
@@ -103,7 +106,6 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             return -2
 
         if len(self.users.keys()) == 255:
-            # TODO Error msg: too much clients, userNotAvailable
             return -1
 
         # Add new user
@@ -161,6 +163,30 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         self.sendPacket(userListPack, (host, port))
         pass
 
+
+    def forwardMessagePack(self, pack):
+        """forward a message to related users
+        There are two kinds of messages: mainRoom and movieRoom
+        """
+        ackPack = pack.copy()
+        ackPack.turnIntoAck()
+        self.sendPacket(ackPack, self.userAddrs[pack.userId])
+        if pack.roomType == room_type["mainRoom"]:
+            # forward message to all the available users
+            dests = [user.userId for user in self.users.values()
+                        if user.status == status_code["available"]]
+            dests.remove(pack.userId)
+            pack.msgType = type_code["messageForward"]
+            pack.destId = pack.userId  # the packet's sender
+            for destId in dests:
+                pack.userId = destId  # the packet's receiver
+                pack.seqNum = self.seqNums[destId]
+                self.sendPacket(pack, self.userAddrs[destId])
+        elif pack.roomType == room_type["movieRoom"]:
+            # TODO
+            pass
+        pass
+
     def datagramReceived(self, datagram, (host, port)):
         """
         :param string datagram: the payload of the UDP packet.
@@ -186,6 +212,8 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             if pack.msgType == type_code["userList"]:
                 print "user id=", pack.userId, " login success"
             return
+        elif pack.ack == 1 and pack.seqNum != self.seqNums[pack.userId]:
+            print "Packet aborted because of seqNum error ", pack
 
         # packet arrived is a request
         if (pack.userId in self.users.keys()
@@ -201,7 +229,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         elif pack.msgType == type_code["disconnectRequest"]:
             pass
         elif pack.msgType == type_code["message"]:
-            pass
+            self.forwardMessagePack(pack)
         elif pack.msgType == type_code["roomRequest"]:
             pass
         elif pack.msgType == type_code["leavePrivateChatRequest"]:

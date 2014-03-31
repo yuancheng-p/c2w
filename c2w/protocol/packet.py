@@ -1,4 +1,5 @@
 from tables import type_decode, room_type_decode, type_code, error_code
+import copy
 
 
 
@@ -41,3 +42,6 @@ userId:%d; destId:%d; length:%d; data(%s):%s]" % (
         self.length = 1
         self.data = error_type
         return
+
+    def copy(self):
+        return copy.deepcopy(self)

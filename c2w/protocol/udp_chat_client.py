@@ -7,7 +7,7 @@ import util
 from twisted.internet import reactor
 from config import attempt_num, timeout
 from tables import type_code, type_decode, state_code
-from tables import error_decode, state_decode
+from tables import error_decode, state_decode, room_type, room_type_decode
 
 logging.basicConfig()
 moduleLogger = logging.getLogger('c2w.protocol.udp_chat_client_protocol')
@@ -68,6 +68,8 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.movieList = []
         self.users = []  # userId: user
         self.state = state_code["disconnected"]
+        self.hasPrivateChat = False
+        self.movieRoomId = -1  # not in movie room
 
     def startProtocol(self):
         """
@@ -82,17 +84,19 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         param callCount: only used for the timeout mechanism.
         """
         # the packet is received
-        if packet.ack != 1 and packet.seqNum != self.seqNum:
-            return
-        print "###sending packet###:", packet
-        if packet.ack != 1:
-            print "packet.seqNum=", packet.seqNum, " self.seqNum=", self.seqNum
-        buf = util.packMsg(packet)
-        self.transport.write(buf, (self.serverAddress, self.serverPort))
 
         if packet.ack == 1:
+            print "###sending ACK packet###:", packet
+            buf = util.packMsg(packet)
+            self.transport.write(buf, (self.serverAddress, self.serverPort))
             return
 
+        if packet.seqNum != self.seqNum:
+            return
+
+        print "###sending packet###:", packet
+        buf = util.packMsg(packet)
+        self.transport.write(buf, (self.serverAddress, self.serverPort))
         callCount += 1
         if callCount < attempt_num:
             reactor.callLater(timeout, self.sendPacket, packet, callCount)
@@ -137,6 +141,24 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
            message is handled properly, i.e., it is shown only by the
            client(s) who are in the same room.
         """
+        # This method is called when user clicks "send" button of any room
+        # FIXME private chat is not considered by the GUI?
+        destId = 0
+        if self.state == state_code["inMainRoom"]:
+            roomType = room_type["mainRoom"]
+            destId = 0  # for main room
+        elif self.state == state_code["inMovieRoom"]:
+            roomType = room_type["movieRoom"]
+            destId = self.movieRoomId
+        else:
+            print "State error!"
+            return
+
+        messagePack = Packet(frg=0, ack=0, msgType=type_code["message"],
+                            roomType=roomType, seqNum=self.seqNum,
+                            userId=self.userId, destId=destId,
+                            length=len(message), data=message)
+        self.sendPacket(messagePack)
         pass
 
     def sendJoinRoomRequestOIE(self, roomName):
@@ -175,8 +197,20 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.sendPacket(pack)
         pass
 
+    def findUserNameById(self, userId):
+        return [user.name for user in self.users if user.userId==userId][0]
+
+
     def messageReceived(self, pack):
-        pass
+        # different action for different room type
+        userName = self.findUserNameById(pack.destId)
+        if pack.roomType == room_type["mainRoom"]:
+            self.clientProxy.chatMessageReceivedONE(userName, pack.data)
+        elif pack.roomType == room_type["movieRoom"]:
+            # TODO
+            pass
+        pack.turnIntoAck()
+        self.sendPacket(pack)
 
     def aytReceived(self, pack):
         pass
@@ -204,7 +238,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         packet.
         """
         pack = util.unpackMsg(datagram)
-        print pack
+        print "####packet received:", pack
 
         # the previous packet is received
         if pack.ack == 1 and pack.seqNum == self.seqNum:
@@ -238,7 +272,6 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
             elif self.state == state_code["inMainRoom"]:
                 self.refreshMainRoom()
         elif pack.msgType == type_code["messageForward"]:
-            # TODO
             self.messageReceived(pack)
         elif pack.msgType == type_code["AYT"]:
             # TODO

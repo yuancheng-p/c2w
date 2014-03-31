@@ -35,7 +35,8 @@ state_code = {
         "loginWaitForMovieList": 1,
         "loginWaitForUserList": 2,
         "loginWaitForAck": 4,
-        "inMainRoom": 3
+        "inMainRoom": 3,
+        "inMovieRoom": 5
         }
 
 state_decode = {
@@ -43,7 +44,19 @@ state_decode = {
         1: "loginWaitForMovieList",
         2: "loginWaitForUserList",
         4: "loginWaitForAck",
-        3: "inMainRoom"
+        3: "inMainRoom",
+        5: "inMovieRoom"
+        }
+
+# status code of a user
+status_code = {
+        "available": 1,
+        "notAvailable": 0
+        }
+
+status_decode = {
+        1: "available",
+        0: "notAvailable"
         }
 
 type_decode = {
