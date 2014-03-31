@@ -3,6 +3,7 @@ import struct
 from packet import Packet
 from tables import type_code
 from data_strucs import Movie, User
+from c2w.main.constants import ROOM_IDS
 
 def packMsg(pack):
     """
@@ -72,10 +73,10 @@ def unpackMsg(datagram):
     roomType = header[0]>>6 & 3
 
     data = None
-    if ack == 1 and msgType == type_code["errorMessage"]:
-        data = struct.unpack_from("B", datagram, offset)
 
-    if msgType == type_code["movieList"]:
+    if ack == 1 and msgType == type_code["errorMessage"]:
+        data = struct.unpack_from("B", datagram, offset)[0]
+    elif msgType == type_code["movieList"]:
         movieList = []
         while offset <= header[4]:
             movie_header_format = "BB"
@@ -123,10 +124,19 @@ def unpackMsg(datagram):
 
 def adaptMovieList(movieList):
     """change movieList into GUI adapted format"""
-    #TODO
-    return []
+    #FIXME Howw to know ip addr and port number of each movie?
+    movies = []
+    for movie in movieList:
+        movies.append((movie.movieName, "127.0.0.1", "1991"))
+    return movies
 
 def adaptUserList(users):
     """change users into GUI adapted format"""
-    #TODO
-    return []
+    userList = []
+    for user in users:
+        if user.status == 1:
+            userList.append((user.name, ROOM_IDS.MAIN_ROOM))
+        else:
+            userList.append((user.name, ROOM_IDS.MOVIE_ROOM))
+    # TODO sort userList by userName
+    return userList

@@ -21,11 +21,11 @@ class Packet():
 
     def __repr__(self):
         return "[frg:%d; ack:%d; msgType:%s(%d); roomType:%s(%d); seqNum:%d; \
-userId:%d; destId:%d; length:%d; data:%s]" % (
+userId:%d; destId:%d; length:%d; data(%s):%s]" % (
                     self.frg, self.ack, type_decode[self.msgType], self.msgType,
                     room_type_decode[self.roomType], self.roomType,
                     self.seqNum, self.userId, self.destId,
-                    self.length, repr(self.data))
+                    self.length, type(self.data), repr(self.data))
 
     def turnIntoAck(self):
         self.ack = 1
@@ -37,7 +37,7 @@ userId:%d; destId:%d; length:%d; data:%s]" % (
         """ errer message is a special type of ack packet
         """
         self.ack = 1
-        self.msgType = error_code["errorMessage"]
+        self.msgType = type_code["errorMessage"]
         self.length = 1
         self.data = error_type
         return

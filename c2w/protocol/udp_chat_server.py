@@ -54,10 +54,12 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
                             # 0 is reserved for login use
         self.movieList = []
         self.userAddrs = {}  # userId: (host, addr)
-        for i in range(2):
-            movieName = "The wolf of wall street"
-            movie = Movie(movieName, i)
-            self.movieList.append(movie)
+        movieName = "The wolf of wall street"
+        movie = Movie(movieName, 1)
+        self.movieList.append(movie)
+        movieName = "hello movie"
+        movie = Movie(movieName, 2)
+        self.movieList.append(movie)
 
     def startProtocol(self):
         """
@@ -67,6 +69,12 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         DatagramProtocol.transport = self.transport
 
     def sendPacket(self, packet, (host, port), callCount=0):
+        # user is not registered: loginError packet
+        if packet.userId == 0 and packet.ack == 1:
+            print "###sending packet### : ", packet
+            buf = util.packMsg(packet)
+            self.transport.write(buf, (host, port))
+            return
         if packet.seqNum != self.seqNums[packet.userId]:  # packet is received
             return
         print "###sending packet### : ", packet
@@ -76,6 +84,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         if packet.ack == 1:
             return
 
+        # not ack packet, set timeout and send later if packet is not received
         callCount += 1
         if callCount < attempt_num:
             reactor.callLater(timeout, self.sendPacket,
@@ -87,8 +96,12 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
     def addUser(self, userName, (host, port)):
         """ add a new user into userList
         returns: -1 if server is full, otherwise a user id
+                 -2 if userName exists
         """
-        # TODO check if username exist
+        if userName in [user.name for user in self.users.values()]:
+            print "### WARNING: username exist!"
+            return -2
+
         if len(self.users.keys()) == 255:
             # TODO Error msg: too much clients, userNotAvailable
             return -1
@@ -111,13 +124,14 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
     def loginResponse(self, pack, (host, port)):
         """The pack is a loginRequest packet
         """
-        # login ack, if login fails, addUser returns -1,
-        # then the server should send an eoorMessage
+        # the server should send an errorMessage when login failed
         pack.userId = self.addUser(pack.data, (host, port))
-        if pack.userId == -1:
+        if pack.userId == -1 or pack.userId == -2:
             pack.turnIntoErrorPack(error_code["userNotAvailable"])
+            pack.userId = 0  # send back to the login failed user
             self.sendPacket(pack, (host, port))
             return
+
         pack.turnIntoAck()
         self.sendPacket(pack, (host, port))
 
@@ -157,7 +171,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         packet.
         """
         pack = util.unpackMsg(datagram)
-        print pack
+        print "###packet received: ", pack
 
         # the previous packet is received
         if pack.ack == 1 and pack.seqNum == self.seqNums[pack.userId]:

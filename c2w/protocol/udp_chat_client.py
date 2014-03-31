@@ -7,6 +7,7 @@ import util
 from twisted.internet import reactor
 from config import attempt_num, timeout
 from tables import type_code, type_decode, state_code
+from tables import error_decode, state_decode
 
 logging.basicConfig()
 moduleLogger = logging.getLogger('c2w.protocol.udp_chat_client_protocol')
@@ -65,8 +66,8 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.userName = ""
         self.packReceived = False
         self.movieList = []
-        self.users = {}  # userId: user
-        self.state = state_code["inMainRoom"]
+        self.users = []  # userId: user
+        self.state = state_code["disconnected"]
 
     def startProtocol(self):
         """
@@ -118,7 +119,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                     userId=self.userId, destId=0, length=len(userName),
                     data=userName)
         self.sendPacket(loginRequest)
-        self.stat = state_code["loginWaitForAck"]
+        self.state = state_code["loginWaitForAck"]
 
 
     def sendChatMessageOIE(self, message):
@@ -184,14 +185,14 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         pass
 
     def showMainRoom(self):
-        #userList = util.adaptUserList(self.users)
-        #movieList = util.adaptMovieList(self.movieList)
-        userList = [("alise", "wolf")]
-        movieList = [("wolf", "127.0.0.1", "1901")]
-        #TODO
-        print dir(self.clientProxy)
-        self.clientProxy.initCompleteOne(userList, movieList)
+        userList = util.adaptUserList(self.users)
+        movieList = util.adaptMovieList(self.movieList)
+        self.clientProxy.initCompleteONE(userList, movieList)
         pass
+
+    def refreshMainRoom(self):
+        userList = util.adaptUserList(self.users)
+        self.clientProxy.setUserListONE(userList)
 
     def datagramReceived(self, datagram, (host, port)):
         """
@@ -209,8 +210,11 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         if pack.ack == 1 and pack.seqNum == self.seqNum:
             self.seqNum += 1
             if pack.msgType == type_code["errorMessage"]:  # error handling
-                print "error message received:", type_decode[pack.data]
-                pass
+                print "error message received:", error_decode[pack.data]
+                print "state:", state_decode[self.state]
+                if self.state == state_code["loginWaitForAck"]:  # loginFailed
+                    self.clientProxy.connectionRejectedONE(
+                                            error_decode[pack.data])
             if pack.msgType == type_code["loginRequest"]:  # wait for movieList
                 self.state = state_code["loginWaitForMovieList"]
                 self.userId = pack.userId  # get userId from server
@@ -231,6 +235,8 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
             if self.state == state_code["loginWaitForUserList"]:
                 self.state = state_code["inMainRoom"]
                 self.showMainRoom()
+            elif self.state == state_code["inMainRoom"]:
+                self.refreshMainRoom()
         elif pack.msgType == type_code["messageForward"]:
             # TODO
             self.messageReceived(pack)

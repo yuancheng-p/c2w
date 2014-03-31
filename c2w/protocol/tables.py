@@ -38,6 +38,14 @@ state_code = {
         "inMainRoom": 3
         }
 
+state_decode = {
+        0: "disconnected",
+        1: "loginWaitForMovieList",
+        2: "loginWaitForUserList",
+        4: "loginWaitForAck",
+        3: "inMainRoom"
+        }
+
 type_decode = {
         0: "loginRequest",
         3: "movieList",
@@ -54,7 +62,7 @@ type_decode = {
         }
 
 
-err_decode = {
+error_decode = {
         1: "usernameNotAvailable",
         2: "idNotExist",
         3: "serverFilled",
