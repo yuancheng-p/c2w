@@ -6,7 +6,7 @@ from packet import Packet
 import util
 from twisted.internet import reactor
 from config import attempt_num, timeout
-from tables import type_code, type_decode
+from tables import type_code, type_decode, state_code
 
 logging.basicConfig()
 moduleLogger = logging.getLogger('c2w.protocol.udp_chat_client_protocol')
@@ -64,6 +64,9 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.userId = 0
         self.userName = ""
         self.packReceived = False
+        self.movieList = []
+        self.users = {}  # userId: user
+        self.state = state_code["inMainRoom"]
 
     def startProtocol(self):
         """
@@ -115,6 +118,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                     userId=self.userId, destId=0, length=len(userName),
                     data=userName)
         self.sendPacket(loginRequest)
+        self.stat = state_code["loginWaitForAck"]
 
 
     def sendChatMessageOIE(self, message):
@@ -157,19 +161,36 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         pass
 
     def movieListReceived(self, pack):
+        """save movieList, and send ack"""
+        self.movieList = pack.data
         pack.turnIntoAck()
         self.sendPacket(pack)
         pass
 
     def userListReceived(self, pack):
+        """ save users, and send ack"""
+        self.users = pack.data
         pack.turnIntoAck()
-        self.sendPacket(pack)  # login success!
+        self.sendPacket(pack)
         pass
 
     def messageReceived(self, pack):
         pass
 
     def aytReceived(self, pack):
+        pass
+
+    def abortReceivedPack(self, pack):
+        pass
+
+    def showMainRoom(self):
+        #userList = util.adaptUserList(self.users)
+        #movieList = util.adaptMovieList(self.movieList)
+        userList = [("alise", "wolf")]
+        movieList = [("wolf", "127.0.0.1", "1901")]
+        #TODO
+        print dir(self.clientProxy)
+        self.clientProxy.initCompleteOne(userList, movieList)
         pass
 
     def datagramReceived(self, datagram, (host, port)):
@@ -191,6 +212,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                 print "error message received:", type_decode[pack.data]
                 pass
             if pack.msgType == type_code["loginRequest"]:  # wait for movieList
+                self.state = state_code["loginWaitForMovieList"]
                 self.userId = pack.userId  # get userId from server
                 pass
             return
@@ -203,11 +225,17 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.serverSeqNum += 1
         if pack.msgType == type_code["movieList"]:
             self.movieListReceived(pack)
+            self.state = state_code["loginWaitForUserList"]
         elif pack.msgType == type_code["userList"]:
             self.userListReceived(pack)
+            if self.state == state_code["loginWaitForUserList"]:
+                self.state = state_code["inMainRoom"]
+                self.showMainRoom()
         elif pack.msgType == type_code["messageForward"]:
+            # TODO
             self.messageReceived(pack)
         elif pack.msgType == type_code["AYT"]:
+            # TODO
             self.aytReceived(pack)
         else:  # type not defined
             print "type not defined on client side"

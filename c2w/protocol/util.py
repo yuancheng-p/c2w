@@ -119,3 +119,14 @@ def unpackMsg(datagram):
     pack = Packet(frg, ack, msgType, roomType, seqNum=header[1],
             userId=header[2], destId=header[3], length=header[4], data=data)
     return pack
+
+
+def adaptMovieList(movieList):
+    """change movieList into GUI adapted format"""
+    #TODO
+    return []
+
+def adaptUserList(users):
+    """change users into GUI adapted format"""
+    #TODO
+    return []

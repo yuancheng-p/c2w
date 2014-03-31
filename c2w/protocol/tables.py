@@ -29,6 +29,15 @@ error_code = {
         "invalidMessage": 6
         }
 
+# state of a client
+state_code = {
+        "disconnected": 0,
+        "loginWaitForMovieList": 1,
+        "loginWaitForUserList": 2,
+        "loginWaitForAck": 4,
+        "inMainRoom": 3
+        }
+
 type_decode = {
         0: "loginRequest",
         3: "movieList",
