@@ -6,7 +6,7 @@ type_code = {
         "message": 1,
         "messageForward": 12,
         "roomRequest": 8,
-        "privateChateRequest": 10,
+        "privateChatRequest": 10,
         "leavePrivateChatRequest": 7,
         "leavePrivateChatRequestForward": 9,
         "AYT": 6,
@@ -36,7 +36,9 @@ state_code = {
         "loginWaitForUserList": 2,
         "loginWaitForAck": 4,
         "inMainRoom": 3,
-        "inMovieRoom": 5
+        "inMovieRoom": 5,
+        "waitForMovieRoomAck": 6,
+        "waitForMovieRoomUserList": 7
         }
 
 state_decode = {

@@ -1,4 +1,5 @@
 from tables import type_decode, room_type_decode, type_code, error_code
+from tables import room_type
 import copy
 
 
@@ -28,10 +29,15 @@ userId:%d; destId:%d; length:%d; data(%s):%s]" % (
                     self.seqNum, self.userId, self.destId,
                     self.length, type(self.data), repr(self.data))
 
-    def turnIntoAck(self):
+    def turnIntoAck(self, data=""):
         self.ack = 1
-        self.data = ""
-        self.length = 0
+        self.data = data
+        if (self.msgType == type_code["roomRequest"] and
+                    self.roomType == room_type["movieRoom"]):
+            # data filed: dict {"ip": ip, "port": port}
+            self.length = 6
+        else:
+            self.length = 0
         return
 
     def turnIntoErrorPack(self, error_type):

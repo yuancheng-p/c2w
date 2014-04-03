@@ -26,6 +26,11 @@ def packMsg(pack):
     if pack.ack == 1:
         if pack.msgType == type_code["errorMessage"]:
             struct.pack_into("B", buf, offset, pack.data)
+        elif pack.msgType == type_code["roomRequest"]:
+            addr_format = "HBBBB"
+            ip = pack.data["ip"].split(".")
+            struct.pack_into(addr_format, buf, offset,
+                    pack.data["port"], int(ip[0]), int(ip[1]), int(ip[2]), int(ip[3]))
         return buf
 
     if pack.msgType == type_code["movieList"]:
@@ -40,15 +45,8 @@ def packMsg(pack):
             struct.pack_into(user_header_format, buf, offset,
                             user.length, user.userId, user.status, user.name)
             offset = offset + 3 + user.length
-    elif pack.msgType == type_code["roomRequest"] and pack.ack == 1:
-        """2 bytes for portNum, 4 byte for ip addr"""
-        addr_format = "HBBBB"
-
-        ip = pack.data["ip"].split(".")
-        struct.pack_into(addr_format, buf, offset,
-                pack.data["port"], ip[0], ip[1], ip[2], ip[3])
-
-        struct.pack_into("B", buf, offset, pack.data)
+    elif pack.msgType == type_code["roomRequest"]:
+        pass
     else:  # str: loginRequest, message, messageForward,
         buf_format = repr(pack.length) + "s"
         struct.pack_into(buf_format, buf, offset, # offset 0
@@ -58,11 +56,7 @@ def packMsg(pack):
 # unpack for UDP
 def unpackMsg(datagram):
     """
-    For the roomRequest, the type of data field is a dict with key "port" and
-    key "ip"
     """
-
-
     header_format = ">BBBBH"
     offset = 0
     header = struct.unpack_from(header_format, datagram, offset)
@@ -106,16 +100,17 @@ def unpackMsg(datagram):
             userList.append(user)
         data = userList
         pass
-    elif msgType == type_code["roomRequest"]:  # and pack.ack == 1:
+    elif msgType == type_code["roomRequest"] and ack == 1:
+        # ack packet sent to user
         """2 bytes for portNum, 4 byte for ip addr"""
         addr_format = "HBBBB"
         msg = struct.unpack_from(addr_format, datagram, offset)
         data = {"port": msg[0], "ip": ".".join(map(str, msg[1:]))}
-        pass
     else:  # str: loginRequest, message, messageForward,
-        buf_format = repr(len(datagram) - 6) + "s"
-        msg = struct.unpack_from(buf_format, datagram, offset)
-        data = msg[0]
+        if len(datagram) > 6:
+            buf_format = repr(len(datagram) - 6) + "s"
+            msg = struct.unpack_from(buf_format, datagram, offset)
+            data = msg[0]
 
     pack = Packet(frg, ack, msgType, roomType, seqNum=header[1],
             userId=header[2], destId=header[3], length=header[4], data=data)

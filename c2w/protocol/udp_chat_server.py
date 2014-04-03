@@ -56,12 +56,16 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
                             # 0 is reserved for login use
         self.movieList = []
         self.userAddrs = {}  # userId: (host, addr)
-        movieName = "The wolf of wall street"
-        movie = Movie(movieName, 1)
-        self.movieList.append(movie)
-        movieName = "hello movie"
-        movie = Movie(movieName, 2)
-        self.movieList.append(movie)
+
+
+    def initMovieList(self):
+        """read movie list config file"""
+        # get movie list of the in the system and save it in the protocol
+        self.serverProxy.addMovie("Examplevideo.ogv", "127.0.0.1", 1991, "./Examplevideo.ogv")
+        movies = self.serverProxy.getMovieList()
+        for movie in movies:
+            self.movieList.append(Movie(movie.movieTitle, movie.movieId))
+        pass
 
     def startProtocol(self):
         """
@@ -69,6 +73,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         """
         self.transport = LossyTransport(self.transport, self.lossPr)
         DatagramProtocol.transport = self.transport
+        self.initMovieList()
 
     def sendPacket(self, packet, (host, port), callCount=0):
         # send an ack packet to registered or non registered user
@@ -119,6 +124,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         return self.currentId
 
     def infromRefreshUserList(self):
+        # TODO Inform all the related room users
         for userId in self.users.keys():
             self.sendUserList(userId, self.userAddrs[userId])
         pass
@@ -141,6 +147,27 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         self.sendMovieList(pack.userId, (host, port))
         pass
 
+    def getMovieNameById(self, id):
+        return [movie.movieName for movie in self.movieList if movie.roomId==id][0]
+
+    def changeRoomResponse(self, pack, (host, port)):
+        if pack.roomType == room_type["movieRoom"]:
+            # ACK, change user status
+            # send (pi, port) according to movie name
+            pack.turnIntoAck(data={"port":1991, "ip":"127.0.0.1"})
+            self.sendPacket(pack, (host, port))
+            # TODO send movie room userList
+            #self.sendUserList(pack.roomType, pack.destId)
+            self.sendUserList(pack.userId, (host, port))
+            # self.infromRefreshUserList()
+            movieName = self.getMovieNameById(pack.destId)
+            self.serverProxy.startStreamingMovie(movieName)
+        elif pack.roomType == room_type["mainRoom"]:
+            pass  # TODO  from movieRoom to mainRoom
+        else:
+            print "change room error: not expected roomType:", pack.roomType
+        return
+
     def sendMovieList(self, userId, (host, port)):
         length = 0
         for movie in self.movieList:
@@ -152,14 +179,21 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         self.sendPacket(movieListPack, (host, port))
         pass
 
-    def sendUserList(self, userId, (host, port), roomType=0):
+    def sendUserList(self, userId, (host, port), roomType=0, roomId=0):
         length = 0
+        userList = []
+        if roomType == room_type["movieRoom"]:
+            pass  # TODO select a userlist
+        elif roomType == room_type["mainRoom"]:
+            userList = self.users
+
         for user in self.users.values():
             length = length + 3 + user.length
+
         userListPack = Packet(frg=0, ack=0, msgType=type_code["userList"],
                             roomType=roomType, seqNum=self.seqNums[userId],
                             userId=userId, destId=0, length=length,
-                            data=self.users)
+                            data=userList)
         self.sendPacket(userListPack, (host, port))
         pass
 
@@ -187,6 +221,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             pass
         pass
 
+
     def datagramReceived(self, datagram, (host, port)):
         """
         :param string datagram: the payload of the UDP packet.
@@ -210,6 +245,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
                 #self.sendUserList(pack.userId, (host, port))
                 self.infromRefreshUserList()
             if pack.msgType == type_code["userList"]:
+                # TODO login success or change to movie room
                 print "user id=", pack.userId, " login success"
             return
         elif pack.ack == 1 and pack.seqNum != self.seqNums[pack.userId]:
@@ -221,23 +257,29 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             print "an unexpected packet is received, aborted"
             return
 
+        # only for the registered users
         if pack.userId in self.users.keys():
             self.clientSeqNums[pack.userId] += 1
 
-        if pack.msgType == type_code["loginRequest"]:
+        # new user
+        if (pack.userId not in self.users.keys() and
+                pack.msgType == type_code["loginRequest"]):
             self.loginResponse(pack, (host, port))
-        elif pack.msgType == type_code["disconnectRequest"]:
-            pass
         elif pack.msgType == type_code["message"]:
+            # forward the mainRoom msg or movieRoomMessage
             self.forwardMessagePack(pack)
         elif pack.msgType == type_code["roomRequest"]:
+            # (back to) mainRoom or (go to) movieRoom
+            self.changeRoomResponse(pack, (host, port))
+            pass
+        elif pack.msgType == type_code["disconnectRequest"]:
             pass
         elif pack.msgType == type_code["leavePrivateChatRequest"]:
             pass
         elif pack.msgType == type_code["privateChatRequest"]:
             pass
         else:  # type not defined
-            print "type not defined"
+            print "type not defined or error packet"
             pass
 
         pass
