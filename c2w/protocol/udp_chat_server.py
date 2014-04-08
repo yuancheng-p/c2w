@@ -61,7 +61,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
     def initMovieList(self):
         """read movie list config file"""
         # get movie list of the in the system and save it in the protocol
-        self.serverProxy.addMovie("Examplevideo.ogv", "127.0.0.1", 1991, "./Examplevideo.ogv")
+        #self.serverProxy.addMovie("Examplevideo.ogv", "127.0.0.1", 1991, "./Examplevideo.ogv")
         movies = self.serverProxy.getMovieList()
         for movie in movies:
             self.movieList.append(Movie(movie.movieTitle, movie.movieId))
@@ -135,8 +135,9 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         # the server should send an errorMessage when login failed
         pack.userId = self.addUser(pack.data, (host, port))
         if pack.userId == -1 or pack.userId == -2:
-            pack.turnIntoErrorPack(error_code["userNotAvailable"])
+            pack.turnIntoErrorPack(error_code["invalidMessage"])
             pack.userId = 0  # send back to the login failed user
+            pack.seqNum = 0  # no seqNum allocated FIXME potential problems
             self.sendPacket(pack, (host, port))
             return
 
@@ -172,7 +173,8 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         length = 0
         for movie in self.movieList:
             length = length + 2 + movie.length
-        movieListPack = Packet(frg=0, ack=0, msgType=3, roomType=0,
+        movieListPack = Packet(frg=0, ack=0, msgType=3,
+                            roomType=room_type["notApplicable"],
                             seqNum=self.seqNums[userId],
                             userId=userId, destId=0, length=length,
                             data=self.movieList)
