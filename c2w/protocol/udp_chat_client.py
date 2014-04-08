@@ -8,6 +8,7 @@ from twisted.internet import reactor
 from config import attempt_num, timeout
 from tables import type_code, type_decode, state_code
 from tables import error_decode, state_decode, room_type, room_type_decode
+from c2w.main.constants import ROOM_IDS
 
 logging.basicConfig()
 moduleLogger = logging.getLogger('c2w.protocol.udp_chat_client_protocol')
@@ -177,17 +178,25 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
             c2w.main.constants.ROOM_IDS.MAIN_ROOM when the user
             wants to go back to the main room.
         """
-        roomId = [movie.roomId for movie in self.movieList
-                                        if movie.movieName==roomName][0]
-        joinRoomRequest = Packet(frg=0, ack=0,
-                                 msgType=type_code["roomRequest"],
-                                 roomType=room_type["movieRoom"],
-                                 seqNum=self.seqNum, userId=self.userId,
-                                 destId=roomId, length=0, data=None)
-        self.sendPacket(joinRoomRequest)
-        self.state = state_code["waitForMovieRoomAck"]
-        self.currentMovieRoom = roomName
-        pass
+        if roomName == ROOM_IDS.MAIN_ROOM:
+            joinRoomRequest = Packet(frg=0, ack=0,
+                                    msgType=type_code["roomRequest"],
+                                    roomType=room_type["mainRoom"],
+                                    seqNum=self.seqNum, userId=self.userId,
+                                    destId=0, length=0, data=None)
+            self.sendPacket(joinRoomRequest)
+            self.state = state_code["waitForMainRoomAck"]
+        else:
+            roomId = [movie.roomId for movie in self.movieList
+                                            if movie.movieName==roomName][0]
+            joinRoomRequest = Packet(frg=0, ack=0,
+                                    msgType=type_code["roomRequest"],
+                                    roomType=room_type["movieRoom"],
+                                    seqNum=self.seqNum, userId=self.userId,
+                                    destId=roomId, length=0, data=None)
+            self.sendPacket(joinRoomRequest)
+            self.state = state_code["waitForMovieRoomAck"]
+            self.currentMovieRoom = roomName
 
     def sendLeaveSystemRequestOIE(self):
         """
@@ -232,13 +241,12 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         pass
 
     def showMainRoom(self):
+        """init the main room"""
         userList = util.adaptUserList(self.users)
         movieList = util.adaptMovieList(self.movieList)
         self.clientProxy.initCompleteONE(userList, movieList)
-        pass
 
-    def showMovieRoom(self):
-        # user can now receive the movie stream
+    def changeRoom(self):
         self.clientProxy.joinRoomOKONE()
 
     def refreshMainRoom(self):
@@ -269,18 +277,18 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
             if pack.msgType == type_code["loginRequest"]:  # wait for movieList
                 self.state = state_code["loginWaitForMovieList"]
                 self.userId = pack.userId  # get userId from server
-                pass
             if pack.msgType == type_code["roomRequest"]:
                 if (pack.roomType == room_type["movieRoom"] and
                         self.state == state_code["waitForMovieRoomAck"]):
-                # This packet contains the ip and the port of the movie requested
+                    # This packet contains the ip and the port of the movie requested
                     self.state = state_code["waitForMovieRoomUserList"]
                     self.currentMovieIp = pack.data["ip"]
                     self.currentMoviePort = pack.data["port"]
                     self.clientProxy.updateMovieAddressPort(self.currentMovieRoom,
                             pack.data["ip"], pack.data["port"])
-                elif pack.roomType == room_type["mainRoom"]:
-                    pass  # TODO
+                elif (pack.roomType == room_type["mainRoom"] and
+                        self.state == state_code["waitForMainRoomAck"]):
+                    self.state = state_code["waitForMainRoomUserList"]
             return
         elif pack.ack != 1 and pack.seqNum != self.serverSeqNum:
             pack.turnIntoAck()
@@ -305,9 +313,13 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                 self.refreshMainRoom()
             elif self.state == state_code["waitForMovieRoomUserList"]:
                 self.state = state_code["inMovieRoom"]
-                self.showMovieRoom()
+                self.changeRoom()
             elif self.state == state_code["inMovieRoom"]:
-                pass
+                pass  # TODO refreshMovieRoom
+            elif self.state == state_code["waitForMainRoomUserList"]:
+                self.state = state_code["inMainRoom"]
+                self.changeRoom()
+                self.refreshMainRoom()
         elif pack.msgType == type_code["messageForward"]:
             self.messageReceived(pack)
         elif pack.msgType == type_code["AYT"]:

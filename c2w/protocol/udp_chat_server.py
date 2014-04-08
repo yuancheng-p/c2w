@@ -153,10 +153,11 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
 
     def changeRoomResponse(self, pack, (host, port)):
         if pack.roomType == room_type["movieRoom"]:
-            # ACK, change user status
             # send (pi, port) according to movie name
             pack.turnIntoAck(data={"port":1991, "ip":"127.0.0.1"})
             self.sendPacket(pack, (host, port))
+            # TODO change user's status
+
             # TODO send movie room userList
             #self.sendUserList(pack.roomType, pack.destId)
             self.sendUserList(pack.userId, (host, port))
@@ -164,7 +165,9 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             movieName = self.getMovieNameById(pack.destId)
             self.serverProxy.startStreamingMovie(movieName)
         elif pack.roomType == room_type["mainRoom"]:
-            pass  # TODO  from movieRoom to mainRoom
+            pack.turnIntoAck()
+            self.sendPacket(pack, (host,port))
+            self.sendUserList(pack.userId, (host, port))
         else:
             print "change room error: not expected roomType:", pack.roomType
         return

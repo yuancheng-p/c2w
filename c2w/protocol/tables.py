@@ -38,7 +38,9 @@ state_code = {
         "inMainRoom": 3,
         "inMovieRoom": 5,
         "waitForMovieRoomAck": 6,
-        "waitForMovieRoomUserList": 7
+        "waitForMovieRoomUserList": 7,
+        "waitForMainRoomAck": 8,
+        "waitForMainRoomUserList": 9
         }
 
 state_decode = {

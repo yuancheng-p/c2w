@@ -1,7 +1,7 @@
 import ctypes
 import struct
 from packet import Packet
-from tables import type_code
+from tables import type_code, room_type
 from data_strucs import Movie, User
 from c2w.main.constants import ROOM_IDS
 
@@ -27,10 +27,13 @@ def packMsg(pack):
         if pack.msgType == type_code["errorMessage"]:
             struct.pack_into("B", buf, offset, pack.data)
         elif pack.msgType == type_code["roomRequest"]:
-            addr_format = "HBBBB"
-            ip = pack.data["ip"].split(".")
-            struct.pack_into(addr_format, buf, offset,
-                    pack.data["port"], int(ip[0]), int(ip[1]), int(ip[2]), int(ip[3]))
+            if pack.roomType == room_type["movieRoom"]:
+                addr_format = "HBBBB"
+                ip = pack.data["ip"].split(".")
+                struct.pack_into(addr_format, buf, offset,
+                        pack.data["port"], int(ip[0]), int(ip[1]), int(ip[2]), int(ip[3]))
+            else:  # MAIN_ROOM
+                pass
         return buf
 
     if pack.msgType == type_code["movieList"]:
@@ -106,9 +109,14 @@ def unpackMsg(datagram):
     elif msgType == type_code["roomRequest"] and ack == 1:
         # ack packet sent to user
         """2 bytes for portNum, 4 byte for ip addr"""
-        addr_format = "HBBBB"
-        msg = struct.unpack_from(addr_format, datagram, offset)
-        data = {"port": msg[0], "ip": ".".join(map(str, msg[1:]))}
+        if roomType == room_type["movieRoom"]:
+            addr_format = "HBBBB"
+            msg = struct.unpack_from(addr_format, datagram, offset)
+            data = {"port": msg[0], "ip": ".".join(map(str, msg[1:]))}
+        elif roomType == room_type["mainRoom"]:
+            pass  # Nothing in the data field
+        else:
+            print "ERROR: room type not expected!"
     else:  # str: loginRequest, message, messageForward,
         if len(datagram) > 6:
             buf_format = repr(len(datagram) - 6) + "s"
