@@ -8,12 +8,12 @@ from c2w.main.constants import ROOM_IDS
 def packMsg(pack):
     """
     """
-    byte_1 = pack.frg | (pack.ack << 1) | (pack.msgType << 2) | (pack.roomType << 6)
+    byte_1 = (pack.frg << 7) | (pack.ack << 6) | (pack.msgType << 2) | pack.roomType
 
     buf_len = 6 + pack.length
     buf = ctypes.create_string_buffer(buf_len)
 
-    header = ">BBBBH"
+    header = "!BBBBH"
     offset = 0
     struct.pack_into(header, buf, offset,
                     byte_1,
@@ -63,14 +63,15 @@ def unpackMsg(datagram):
     """
 
 
-    header_format = ">BBBBH"
+    header_format = "!BBBBH"
     offset = 0
     header = struct.unpack_from(header_format, datagram, offset)
+
     offset += 6
-    frg = header[0] & 1
-    ack = header[0]>>1 & 1
+    frg = header[0]>>7 & 1
+    ack = header[0]>>6 & 1
     msgType = header[0]>>2 & 15
-    roomType = header[0]>>6 & 3
+    roomType = header[0] & 3
 
     data = None
 
