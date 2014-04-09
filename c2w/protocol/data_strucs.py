@@ -13,7 +13,7 @@ class Movie():
 
 class User():
 
-    def __init__(self, name, userId, roomId=3, status=1):
+    def __init__(self, name, userId, status=1):
         self.name = name
         self.length = len(name)
         self.userId = userId

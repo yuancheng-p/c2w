@@ -46,7 +46,7 @@ def packMsg(pack):
         for user in pack.data.values():  # data is a user dict
             user_header_format = "BBB" + repr(user.length) + "s"
             struct.pack_into(user_header_format, buf, offset,
-                            user.length, user.userId, user.status, user.name)
+                             user.length, user.userId, user.status, user.name)
             offset = offset + 3 + user.length
     elif pack.msgType == type_code["roomRequest"]:
         pass
@@ -102,7 +102,7 @@ def unpackMsg(datagram):
             userName  = struct.unpack_from(userName_format, datagram, offset)[0]
             offset += user_header[0]
 
-            user = User(userName, user_header[1], user_header[2]>>7)
+            user = User(userName, userId=user_header[1], status=user_header[2])
             userList.append(user)
         data = userList
         pass
@@ -136,13 +136,15 @@ def adaptMovieList(movieList):
         movies.append((movie.movieName, "127.0.0.1", "1991"))
     return movies
 
-def adaptUserList(users):
+def adaptUserList(users, movieName=None):
     """change users into GUI adapted format"""
     userList = []
     for user in users:
         if user.status == 1:
             userList.append((user.name, ROOM_IDS.MAIN_ROOM))
-        else:
+        elif movieName == None:
             userList.append((user.name, ROOM_IDS.MOVIE_ROOM))
+        elif movieName != None:
+            userList.append((user.name, movieName))
     # TODO sort userList by userName
     return userList

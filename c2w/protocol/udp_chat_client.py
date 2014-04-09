@@ -249,8 +249,9 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
     def changeRoom(self):
         self.clientProxy.joinRoomOKONE()
 
-    def refreshMainRoom(self):
-        userList = util.adaptUserList(self.users)
+    def updateUserList(self, movieName=None):
+        """refresh the userList in the room"""
+        userList = util.adaptUserList(self.users, movieName=movieName)
         self.clientProxy.setUserListONE(userList)
 
     def datagramReceived(self, datagram, (host, port)):
@@ -310,16 +311,18 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                 self.state = state_code["inMainRoom"]
                 self.showMainRoom()
             elif self.state == state_code["inMainRoom"]:
-                self.refreshMainRoom()
+                self.updateUserList()
+            elif self.state == state_code["inMovieRoom"]:
+                self.updateUserList(movieName=self.currentMovieRoom)
+                pass
             elif self.state == state_code["waitForMovieRoomUserList"]:
                 self.state = state_code["inMovieRoom"]
                 self.changeRoom()
-            elif self.state == state_code["inMovieRoom"]:
-                pass  # TODO refreshMovieRoom
+                self.updateUserList(movieName=self.currentMovieRoom)
             elif self.state == state_code["waitForMainRoomUserList"]:
                 self.state = state_code["inMainRoom"]
                 self.changeRoom()
-                self.refreshMainRoom()
+                self.updateUserList()
         elif pack.msgType == type_code["messageForward"]:
             self.messageReceived(pack)
         elif pack.msgType == type_code["AYT"]:
