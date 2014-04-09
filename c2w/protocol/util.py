@@ -99,7 +99,7 @@ def unpackMsg(datagram):
             offset += 3
 
             userName_format = repr(user_header[0]) + "s"
-            userName  = struct.unpack_from(userName_format, datagram, offset)[0]
+            userName = struct.unpack_from(userName_format, datagram, offset)[0]
             offset += user_header[0]
 
             user = User(userName, userId=user_header[1], status=user_header[2])

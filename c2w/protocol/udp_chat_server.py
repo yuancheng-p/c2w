@@ -208,7 +208,6 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         """send userList to a user. This user can be in main room and movie room,
         if the user is in a movie room, the movieName should not be None
         """
-        length = 0
         users = {}
         if (roomType == room_type["movieRoom"] and movieName != None):
             for user in self.serverProxy.getUserList():
@@ -221,7 +220,8 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         else:
             print "Unexpected error!"
 
-        for user in self.users.values():
+        length = 0
+        for user in users.values():
             length = length + 3 + user.length
 
         userListPack = Packet(frg=0, ack=0, msgType=type_code["userList"],
