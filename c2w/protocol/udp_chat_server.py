@@ -239,22 +239,27 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         ackPack = pack.copy()
         ackPack.turnIntoAck()
         self.sendPacket(ackPack, self.userAddrs[pack.userId])
+        dests = []
         if pack.roomType == room_type["mainRoom"]:
             # forward message to all the available users
             dests = [user.userId for user in self.users.values()
                         if user.status == status_code["available"]]
-            dests.remove(pack.userId)
-            pack.msgType = type_code["messageForward"]
-            pack.destId = pack.userId  # the packet's sender
-            for destId in dests:
-                pack.userId = destId  # the packet's receiver
-                pack.seqNum = self.seqNums[destId]
-                self.sendPacket(pack, self.userAddrs[destId])
         elif pack.roomType == room_type["movieRoom"]:
-            # TODO
-            pass
-        pass
-
+            # forward message to all the users in the same movie room
+            movie = self.serverProxy.getMovieById(pack.destId)
+            for user in self.serverProxy.getUserList():
+                if user.userChatRoom == movie.movieTitle:
+                    dests.append(user.userId)
+        else:
+            print "Unexpected room type when forwarding message!"
+        dests.remove(pack.userId)
+        pack.msgType = type_code["messageForward"]
+        pack.destId = pack.userId  # the packet's sender
+        for destId in dests:
+            pack.userId = destId  # the packet's receiver
+            pack.seqNum = self.seqNums[destId]
+            self.sendPacket(pack, self.userAddrs[destId])
+        return
 
     def datagramReceived(self, datagram, (host, port)):
         """

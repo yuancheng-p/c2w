@@ -186,6 +186,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                                     destId=0, length=0, data=None)
             self.sendPacket(joinRoomRequest)
             self.state = state_code["waitForMainRoomAck"]
+            self.movieRoomId = -1
         else:
             roomId = [movie.roomId for movie in self.movieList
                                             if movie.movieName==roomName][0]
@@ -197,6 +198,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
             self.sendPacket(joinRoomRequest)
             self.state = state_code["waitForMovieRoomAck"]
             self.currentMovieRoom = roomName
+            self.movieRoomId = roomId
 
     def sendLeaveSystemRequestOIE(self):
         """
@@ -226,11 +228,9 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
     def messageReceived(self, pack):
         # different action for different room type
         userName = self.findUserNameById(pack.destId)
-        if pack.roomType == room_type["mainRoom"]:
+        if (pack.roomType == room_type["mainRoom"] or
+                pack.roomType == room_type["movieRoom"]):
             self.clientProxy.chatMessageReceivedONE(userName, pack.data)
-        elif pack.roomType == room_type["movieRoom"]:
-            # TODO
-            pass
         pack.turnIntoAck()
         self.sendPacket(pack)
 
