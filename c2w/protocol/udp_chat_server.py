@@ -260,6 +260,16 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             pack.seqNum = self.seqNums[destId]
             self.sendPacket(pack, self.userAddrs[destId])
         return
+        
+    def leaveResponse(self, pack):
+        pack.turnIntoAck()
+        self.sendPacket(pack, self.userAddrs[pack.userId])
+        userName=self.users[pack.userId].name
+        self.serverProxy.removeUser(userName)
+        del self.users[pack.userId]     #delete user from server's base
+        del self.seqNums[pack.userId]
+        del self.clientSeqNums[pack.userId]
+        self.informRefreshUserList()
 
     def datagramReceived(self, datagram, (host, port)):
         """
@@ -315,6 +325,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             self.changeRoomResponse(pack, (host, port))
             pass
         elif pack.msgType == type_code["disconnectRequest"]:
+            self.leaveResponse(pack)
             pass
         elif pack.msgType == type_code["leavePrivateChatRequest"]:
             pass
