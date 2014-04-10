@@ -205,6 +205,12 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         Called **by the controller**  when the user
         has clicked on the leave button in the main room.
         """
+        
+        LeaveSystemRequest=Packet(frg=0, ack=0, msgType=type_code["disconnectRequest"],
+                                roomType=room_type["notApplicable"],
+                                seqNum=self.seqNum, userId=self.userId,
+                                destId=0, length=0, data="")
+        self.sendPacket(LeaveSystemRequest)
         pass
 
     def movieListReceived(self, pack):
@@ -290,6 +296,10 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                 elif (pack.roomType == room_type["mainRoom"] and
                         self.state == state_code["waitForMainRoomAck"]):
                     self.state = state_code["waitForMainRoomUserList"]
+            if pack.msgType == type_code["disconnectRequest"]:
+                self.clientProxy.leaveSystemOKONE()
+                self.clientProxy.applicationQuit()
+                
             return
         elif pack.ack != 1 and pack.seqNum != self.serverSeqNum:
             pack.turnIntoAck()
