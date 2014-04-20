@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 from twisted.internet.protocol import Protocol
 import logging
+from twisted.internet import reactor
+import util
+import struct
+from data_strucs import Movie, User
+from config import attempt_num, timeout
+from c2w.main.constants import ROOM_IDS
+from packet import Packet
+from tables import type_code, type_decode, state_code, error_code
+from tables import error_decode, state_decode, room_type, room_type_decode
 
 logging.basicConfig()
 moduleLogger = logging.getLogger('c2w.protocol.tcp_chat_server_protocol')
@@ -52,6 +61,203 @@ class c2wTcpChatServerProtocol(Protocol):
         self.clientAddress = clientAddress
         self.clientPort = clientPort
         self.serverProxy = serverProxy
+        self.headFound = False
+        self.currentHead = ""  # current header in binary mode
+        self.currentSize = 0
+        self.buf = ""
+        self.header = Packet(0, 0, 0, 3, 0, 0, 0, 0, None)
+
+        self.users = {}  # userId: user
+        self.seqNums = {}  # userId: seqNum
+        self.clientSeqNums = {}  # userId: seqNum expected to receive
+        self.currentId = 1  # a variable for distributing user id,
+                            # 0 is reserved for login use
+        self.movieList = []
+        self.userAddrs = {}  # userId: (host, addr)
+        movies = self.serverProxy.getMovieList()
+        for movie in movies:
+            self.movieList.append(Movie(movie.movieTitle, movie.movieId))
+
+    def sendPacket(self, packet, callCount=0):
+        # send an ack packet to registered or non registered user
+        # ack packet is sent only once
+        if packet.ack == 1:
+            print "###sending ACK packet### : ", packet
+            buf = util.packMsg(packet)
+            self.transport.write(buf.raw)
+            return
+
+        # not ack packet, set timeout and send later if packet is not received
+        # when an un-ack packet is received, we stop the timeout
+        print "packet.seqNum: ",packet.seqNum, " ## ", "self.seqNums[packet.userId(", packet.userId, ")]: ", self.seqNums[packet.userId]
+        if packet.seqNum != self.seqNums[packet.userId]:  # packet is received
+            return
+        print "###sending packet### : ", packet
+        buf = util.packMsg(packet)
+        self.transport.write(buf.raw)
+
+        callCount += 1
+        if callCount < attempt_num:
+            #reactor.callLater(timeout, self.sendPacket, packet, callCount)
+            pass
+        else:
+            print "too man tries, packet:", packet, " aborted"
+            return
+
+    def sendUserList(self, userId, roomType=0, movieName=None):
+        """send userList to a user. This user can be in main room and movie room,
+        if the user is in a movie room, the movieName should not be None
+        """
+        users = {}
+        if (roomType == room_type["movieRoom"] and movieName != None):
+            for user in self.serverProxy.getUserList():
+                if user.userChatRoom == movieName:
+                    users[user.userId] = User(user.userName, user.userId,
+                                              status=0)
+        elif roomType == room_type["mainRoom"]:
+            for user in self.serverProxy.getUserList():
+                users = self.users
+        else:
+            print "Unexpected error!"
+
+        length = 0
+        for user in users.values():
+            length = length + 3 + user.length
+
+        userListPack = Packet(frg=0, ack=0, msgType=type_code["userList"],
+                              roomType=roomType, seqNum=self.seqNums[userId],
+                              userId=userId, destId=0, length=length,
+                              data=users)
+        self.sendPacket(userListPack)
+
+    def informRefreshUserList(self, movieName=None):
+        """send userList to all the available main room users,
+        and if the movieName is not None, send all the new user
+        list to all the users in this movie room"""
+        userList = self.serverProxy.getUserList()
+        for user in userList:
+            if user.userChatRoom == ROOM_IDS.MAIN_ROOM:
+                self.sendUserList(user.userId,
+                                  roomType=room_type["mainRoom"])
+            elif user.userChatRoom == movieName:
+                self.sendUserList(user.userId,
+                                  roomType=room_type["movieRoom"],
+                                  movieName=movieName)
+
+    def sendMovieList(self, userId):
+        length = 0
+        for movie in self.movieList:
+            length = length + 2 + movie.length
+        movieListPack = Packet(frg=0, ack=0, msgType=3,
+                            roomType=room_type["notApplicable"],
+                            seqNum=self.seqNums[userId],
+                            userId=userId, destId=0, length=length,
+                            data=self.movieList)
+        self.sendPacket(movieListPack)
+        pass
+
+    def addUser(self, userName):
+        """ add a new user into userList
+        returns: -1 if server is full, otherwise a user id
+                 -2 if userName exists
+        """
+        if userName in [user.name for user in self.users.values()]:
+            print "### WARNING: username exist!"
+            return -1
+
+        # Add new user
+        userId = self.serverProxy.addUser(userName, ROOM_IDS.MAIN_ROOM,
+                                 userAddress=(self.clientAddress, self.clientPort))
+        self.users[userId] = User(userName, userId, status=1)
+        self.seqNums[userId] = 0
+        self.clientSeqNums[userId] = 1  # loginRequest is received
+        self.userAddrs[userId] = (self.clientAddress, self.clientPort)
+        return userId
+
+    def loginResponse(self, pack):
+        """The pack is a loginRequest packet
+        """
+        # Just for passing the uselesse test of duplicate
+        if pack.seqNum == 1:
+            pack.turnIntoErrorPack(error_code["invalidMessage"])
+            pack.userId = 0
+            pack.seqNum = 0
+            self.sendPacket(pack)
+            return
+
+        tempUserId = self.addUser(pack.data)
+        # userName exists
+        if tempUserId == -1:
+            # get userId by userName, the user exist
+            for userId, user in self.users.items():
+                if user.name == pack.data:
+                    tempUserId = userId
+            """
+            If the user with this userName has already received the
+            loginRequest ACK, its seqNum is more than zero.
+            Otherwise, we won't consider it's an other user who use
+            the same userName to login.
+            """
+            if self.seqNums[tempUserId] != 0:
+                # the server should send an errorMessage when login failed
+                pack.turnIntoErrorPack(error_code["userNotAvailable"])
+                pack.userId = 0  # send back to the login failed user
+                pack.seqNum = 0  # no seqNum allocated FIXME potential problems
+                self.sendPacket(pack)
+                return
+
+        pack.userId = tempUserId
+        pack.turnIntoAck()
+        self.sendPacket(pack)
+
+        # send movieList
+        self.sendMovieList(pack.userId)
+        pass
+
+    def extractPackets(self, data):
+        """
+        return: a list of packet objects
+        """
+        packList = []
+        while data != "":
+            # header detected
+            if not self.headFound:
+                print "PACKET HEADER DETECTED"
+                remainHeadLength = 6 - len(self.currentHead)
+                if len(data) >= remainHeadLength:
+                    if self.currentHead != "":
+                        self.currentHead += data[0:remainHeadLength]
+                        data = data[remainHeadLength:]
+                    else:
+                        self.currentHead = data[0:6]
+                        data = data[6:]
+                    self.header = util.unpackHeader(self.currentHead)
+                    self.buf += self.currentHead
+                    self.currentHead = ""
+                    self.headFound = True
+                else:
+                    self.currentHead += data
+
+            # remain msg in the packet
+            else:
+                # The packet is separated into many TCP packets
+                if len(data) <= (self.header.length - self.currentSize):
+                    self.buf += data
+                    self.currentSize += len(data)
+                    data = ""
+                # Multiple packets are packed into one TCP packet, always happen
+                else:  # cut the data
+                    t_data = data[0:self.header.length - self.currentSize]
+                    self.buf += t_data
+                    self.currentSize += len(t_data)
+                    data = data[self.header.length - self.currentSize:]
+
+            if self.currentSize >= self.header.length and self.headFound:
+                packList.append(util.unpackMsg(self.buf))
+                self.headFound = False
+                self.currentSize = 0
+                self.buf = ""
+        return packList
 
     def dataReceived(self, data):
         """
@@ -61,4 +267,59 @@ class c2wTcpChatServerProtocol(Protocol):
         Twisted calls this method whenever new data is received on this
         connection.
         """
+        print "#### data received!"
+        packList = self.extractPackets(data)
+        for pack in packList:
+            print "## packet received:", pack
+            # the previous packet is received
+            if pack.ack == 1 and pack.seqNum == self.seqNums[pack.userId]:
+                self.seqNums[pack.userId] += 1
+                if pack.msgType == type_code["errorMessage"]:
+                    pass
+                if pack.msgType == type_code["AYT"]:
+                    pass
+                if pack.msgType == type_code["movieList"]:
+                    self.informRefreshUserList()
+                if pack.msgType == type_code["userList"]:
+                    # login success or change to movie room
+                    if pack.seqNum == 1:
+                        print "user id=", pack.userId, " login success"
+                    else:
+                        pass
+                return
+            elif pack.ack == 1 and pack.seqNum != self.seqNums[pack.userId]:
+                print "Packet aborted because of seqNum error ", pack
+
+            # packet arrived is a request
+            if (pack.userId in self.users.keys()
+                    and pack.seqNum != self.clientSeqNums[pack.userId]):
+                # TODO this packet might be a resent packet, so send an ack
+                print "an unexpected packet is received, aborted"
+                return
+
+            # only for the registered users
+            if pack.userId in self.users.keys():
+                self.clientSeqNums[pack.userId] += 1
+
+            # new user
+            if (pack.userId not in self.users.keys() and
+                    pack.msgType == type_code["loginRequest"]):
+                self.loginResponse(pack)
+            elif pack.msgType == type_code["message"]:
+                # forward the mainRoom msg or movieRoomMessage
+                self.forwardMessagePack(pack)
+            elif pack.msgType == type_code["roomRequest"]:
+                # (back to) mainRoom or (go to) movieRoom
+                self.changeRoomResponse(pack)
+                pass
+            elif pack.msgType == type_code["disconnectRequest"]:
+                self.leaveResponse(pack)
+                pass
+            elif pack.msgType == type_code["leavePrivateChatRequest"]:
+                pass
+            elif pack.msgType == type_code["privateChatRequest"]:
+                pass
+            else:  # type not defined
+                print "type not defined or error packet"
+                pass
         pass

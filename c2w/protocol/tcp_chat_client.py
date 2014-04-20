@@ -82,7 +82,7 @@ class c2wTcpChatClientProtocol(Protocol):
         if packet.ack == 1:
             print "###sending ACK packet###:", packet
             buf = util.packMsg(packet)
-            self.transport.write(buf)
+            self.transport.write(buf.raw)
             return
 
         if packet.seqNum != self.seqNum:
@@ -90,13 +90,21 @@ class c2wTcpChatClientProtocol(Protocol):
 
         print "###sending packet###:", packet
         buf = util.packMsg(packet)
-        self.transport.write(buf)
+        self.transport.write(buf.raw)
         callCount += 1
         if callCount < attempt_num:
-            reactor.callLater(timeout, self.sendPacket, packet, callCount)
+            #reactor.callLater(timeout, self.sendPacket, packet, callCount)
+            pass
         else:
             print "too many tries, packet:", packet," aborted"
             return
+
+    def userListReceived(self, pack):
+        """ save users, and send ack"""
+        self.users = pack.data
+        pack.turnIntoAck()
+        self.sendPacket(pack)
+        pass
 
     def sendLoginRequestOIE(self, userName):
         """
@@ -249,8 +257,10 @@ class c2wTcpChatClientProtocol(Protocol):
 
             if self.currentSize >= self.header.length and self.headFound:
                 packList.append(util.unpackMsg(self.buf))
+                self.header = Packet(0, 0, 0, 3, 0, 0, 0, 0, None)
                 self.headFound = False
                 self.currentSize = 0
+                self.buf = ""
         return packList
 
     def dataReceived(self, data):
@@ -263,10 +273,9 @@ class c2wTcpChatClientProtocol(Protocol):
         """
         print "#### data received!"
         packList = self.extractPackets(data)
-        print "-----------------------------------"
-        print packList
 
         for pack in packList:
+            print "-------------------------"
             print "## packet received:", pack
             # the previous packet is received
             if pack.ack == 1 and pack.seqNum == self.seqNum:
@@ -296,16 +305,16 @@ class c2wTcpChatClientProtocol(Protocol):
                     self.clientProxy.leaveSystemOKONE()
                     self.clientProxy.applicationQuit()
 
-                break
+                continue
             elif pack.ack != 1 and pack.seqNum != self.serverSeqNum:
                 pack.turnIntoAck()
                 self.sendPacket(pack)
-                break
+                continue
 
             # packet arrived is not an ACK packet
             if pack.seqNum != self.serverSeqNum:
                 print "received an unexpected packet, aborted"
-                break
+                continue
 
             self.serverSeqNum += 1
             if pack.msgType == type_code["movieList"]:
