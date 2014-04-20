@@ -56,21 +56,39 @@ def packMsg(pack):
                         pack.data)
     return buf
 
+def unpackHeader(datagram):
+    header_format = "!BBBBH"
+    offset = 0
+    header = struct.unpack_from(header_format, datagram, offset)
+
+    frg = header[0]>>7 & 1
+    ack = header[0]>>6 & 1
+    msgType = header[0]>>2 & 15
+    roomType = header[0] & 3
+    seqNum = header[1]
+    userId = header[2]
+    destId = header[3]
+    length = header[4]
+    header = Packet(frg, ack, msgType, roomType, seqNum=seqNum,
+            userId=userId, destId=destId, length=length, data=None)
+    return header
+
 # unpack for UDP
 def unpackMsg(datagram):
     """
     """
 
+    header  = unpackHeader(datagram)
+    frg = header.frg
+    ack = header.ack
+    msgType = header.msgType
+    roomType = header.roomType
+    seqNum = header.seqNum
+    userId = header.userId
+    destId = header.destId
+    length = header.length
 
-    header_format = "!BBBBH"
-    offset = 0
-    header = struct.unpack_from(header_format, datagram, offset)
-
-    offset += 6
-    frg = header[0]>>7 & 1
-    ack = header[0]>>6 & 1
-    msgType = header[0]>>2 & 15
-    roomType = header[0] & 3
+    offset = 6
 
     data = None
 
@@ -78,7 +96,7 @@ def unpackMsg(datagram):
         data = struct.unpack_from("B", datagram, offset)[0]
     elif msgType == type_code["movieList"]:
         movieList = []
-        while offset <= header[4]:
+        while offset <= length:
             movie_header_format = "BB"
             movie_header = struct.unpack_from(movie_header_format, datagram, offset)
             offset += 2
@@ -93,7 +111,7 @@ def unpackMsg(datagram):
         pass
     elif msgType == type_code["userList"]:
         userList = []
-        while offset <= header[4]:
+        while offset <= length:
             user_header_format = "BBB"
             user_header = struct.unpack_from(user_header_format, datagram, offset)
             offset += 3
@@ -123,8 +141,8 @@ def unpackMsg(datagram):
             msg = struct.unpack_from(buf_format, datagram, offset)
             data = msg[0]
 
-    pack = Packet(frg, ack, msgType, roomType, seqNum=header[1],
-            userId=header[2], destId=header[3], length=header[4], data=data)
+    pack = Packet(frg, ack, msgType, roomType, seqNum=seqNum,
+            userId=userId, destId=destId, length=length, data=data)
     return pack
 
 
