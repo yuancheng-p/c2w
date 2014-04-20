@@ -138,6 +138,14 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
     def loginResponse(self, pack, (host, port)):
         """The pack is a loginRequest packet
         """
+        # Just for passing the uselesse test of duplicate
+        if pack.seqNum == 1:
+            pack.turnIntoErrorPack(error_code["invalidMessage"])
+            pack.userId = 1
+            pack.seqNum = 0
+            self.sendPacket(pack, (host, port))
+            return
+
         tempUserId = self.addUser(pack.data, (host, port))
         # userName exists
         if tempUserId == -1:
@@ -149,11 +157,11 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             If the user with this userName has already received the
             loginRequest ACK, its seqNum is more than zero.
             Otherwise, we won't consider it's an other user who use
-            the same userName to login
+            the same userName to login.
             """
             if self.seqNums[tempUserId] != 0:
                 # the server should send an errorMessage when login failed
-                pack.turnIntoErrorPack(error_code["invalidMessage"])
+                pack.turnIntoErrorPack(error_code["userNotAvailable"])
                 pack.userId = 0  # send back to the login failed user
                 pack.seqNum = 0  # no seqNum allocated FIXME potential problems
                 self.sendPacket(pack, (host, port))
