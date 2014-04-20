@@ -109,9 +109,6 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         """
         if userName in [user.name for user in self.users.values()]:
             print "### WARNING: username exist!"
-            return -2
-
-        if len(self.users.keys()) == 255:
             return -1
 
         # Add new user
@@ -141,15 +138,28 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
     def loginResponse(self, pack, (host, port)):
         """The pack is a loginRequest packet
         """
-        # the server should send an errorMessage when login failed
-        pack.userId = self.addUser(pack.data, (host, port))
-        if pack.userId == -1 or pack.userId == -2:
-            pack.turnIntoErrorPack(error_code["invalidMessage"])
-            pack.userId = 0  # send back to the login failed user
-            pack.seqNum = 0  # no seqNum allocated FIXME potential problems
-            self.sendPacket(pack, (host, port))
-            return
+        tempUserId = self.addUser(pack.data, (host, port))
+        # userName exists
+        if tempUserId == -1:
+            # get userId by userName, the user exist
+            for userId, user in self.users.items():
+                if user.name == pack.data:
+                    tempUserId = userId
+            """
+            If the user with this userName has already received the
+            loginRequest ACK, its seqNum is more than zero.
+            Otherwise, we won't consider it's an other user who use
+            the same userName to login
+            """
+            if self.seqNums[tempUserId] != 0:
+                # the server should send an errorMessage when login failed
+                pack.turnIntoErrorPack(error_code["invalidMessage"])
+                pack.userId = 0  # send back to the login failed user
+                pack.seqNum = 0  # no seqNum allocated FIXME potential problems
+                self.sendPacket(pack, (host, port))
+                return
 
+        pack.userId = tempUserId
         pack.turnIntoAck()
         self.sendPacket(pack, (host, port))
 
@@ -260,7 +270,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             pack.seqNum = self.seqNums[destId]
             self.sendPacket(pack, self.userAddrs[destId])
         return
-        
+
     def leaveResponse(self, pack):
         pack.turnIntoAck()
         self.sendPacket(pack, self.userAddrs[pack.userId])
