@@ -133,6 +133,24 @@ class c2wTcpChatClientProtocol(Protocol):
            message is handled properly, i.e., it is shown only by the
            client(s) who are in the same room.
         """
+        # This method is called when user clicks "send" button of any room
+        # FIXME private chat is not considered by the GUI?
+        destId = 0
+        if self.state == state_code["inMainRoom"]:
+            roomType = room_type["mainRoom"]
+            destId = 0  # for main room
+        elif self.state == state_code["inMovieRoom"]:
+            roomType = room_type["movieRoom"]
+            destId = self.movieRoomId
+        else:
+            print "State error!"
+            return
+
+        messagePack = Packet(frg=0, ack=0, msgType=type_code["message"],
+                            roomType=roomType, seqNum=self.seqNum,
+                            userId=self.userId, destId=destId,
+                            length=len(message), data=message)
+        self.sendPacket(messagePack)
         pass
 
     def sendJoinRoomRequestOIE(self, roomName):
@@ -156,6 +174,40 @@ class c2wTcpChatClientProtocol(Protocol):
         has clicked on the leave button in the main room.
         """
         pass
+
+    def showMainRoom(self):
+        """init the main room"""
+        userList = util.adaptUserList(self.users)
+        movieList = util.adaptMovieList(self.movieList)
+        self.clientProxy.initCompleteONE(userList, movieList)
+
+    def changeRoom(self):
+        self.clientProxy.joinRoomOKONE()
+
+    def updateUserList(self, movieName=None):
+        """refresh the userList in the room"""
+        userList = util.adaptUserList(self.users, movieName=movieName)
+        self.clientProxy.setUserListONE(userList)
+
+    def findUserNameById(self, userId):
+        return [user.name for user in self.users if user.userId==userId][0]
+
+    def movieListReceived(self, pack):
+        """save movieList, and send ack"""
+        self.movieList = pack.data
+        pack.turnIntoAck()
+        self.sendPacket(pack)
+        pass
+
+    def messageReceived(self, pack):
+        # different action for different room type
+        userName = self.findUserNameById(pack.destId)
+        if (pack.roomType == room_type["mainRoom"] or
+                pack.roomType == room_type["movieRoom"]):
+            self.clientProxy.chatMessageReceivedONE(userName, pack.data)
+        pack.turnIntoAck()
+        self.sendPacket(pack)
+
 
     def extractPackets(self, data):
         """
@@ -211,9 +263,79 @@ class c2wTcpChatClientProtocol(Protocol):
         """
         print "#### data received!"
         packList = self.extractPackets(data)
+        print "-----------------------------------"
+        print packList
 
         for pack in packList:
             print "## packet received:", pack
-            # TODO
+            # the previous packet is received
+            if pack.ack == 1 and pack.seqNum == self.seqNum:
+                self.seqNum += 1
+                if pack.msgType == type_code["errorMessage"]:  # error handling
+                    print "error message received:", error_decode[pack.data]
+                    print "state:", state_decode[self.state]
+                    if self.state == state_code["loginWaitForAck"]:  # loginFailed
+                        self.clientProxy.connectionRejectedONE(
+                                                error_decode[pack.data])  # back to login window
+                if pack.msgType == type_code["loginRequest"]:  # wait for movieList
+                    self.state = state_code["loginWaitForMovieList"]
+                    self.userId = pack.userId  # get userId from server
+                if pack.msgType == type_code["roomRequest"]:
+                    if (pack.roomType == room_type["movieRoom"] and
+                            self.state == state_code["waitForMovieRoomAck"]):
+                        # This packet contains the ip and the port of the movie requested
+                        self.state = state_code["waitForMovieRoomUserList"]
+                        self.currentMovieIp = pack.data["ip"]
+                        self.currentMoviePort = pack.data["port"]
+                        self.clientProxy.updateMovieAddressPort(self.currentMovieRoom,
+                                pack.data["ip"], pack.data["port"])
+                    elif (pack.roomType == room_type["mainRoom"] and
+                            self.state == state_code["waitForMainRoomAck"]):
+                        self.state = state_code["waitForMainRoomUserList"]
+                if pack.msgType == type_code["disconnectRequest"]:
+                    self.clientProxy.leaveSystemOKONE()
+                    self.clientProxy.applicationQuit()
+
+                break
+            elif pack.ack != 1 and pack.seqNum != self.serverSeqNum:
+                pack.turnIntoAck()
+                self.sendPacket(pack)
+                break
+
+            # packet arrived is not an ACK packet
+            if pack.seqNum != self.serverSeqNum:
+                print "received an unexpected packet, aborted"
+                break
+
+            self.serverSeqNum += 1
+            if pack.msgType == type_code["movieList"]:
+                self.movieListReceived(pack)
+                self.state = state_code["loginWaitForUserList"]
+            elif pack.msgType == type_code["userList"]:
+                self.userListReceived(pack)
+                if self.state == state_code["loginWaitForUserList"]:
+                    self.state = state_code["inMainRoom"]
+                    self.showMainRoom()
+                elif self.state == state_code["inMainRoom"]:
+                    self.updateUserList()
+                elif self.state == state_code["inMovieRoom"]:
+                    self.updateUserList(movieName=self.currentMovieRoom)
+                    pass
+                elif self.state == state_code["waitForMovieRoomUserList"]:
+                    self.state = state_code["inMovieRoom"]
+                    self.changeRoom()
+                    self.updateUserList(movieName=self.currentMovieRoom)
+                elif self.state == state_code["waitForMainRoomUserList"]:
+                    self.state = state_code["inMainRoom"]
+                    self.changeRoom()
+                    self.updateUserList()
+            elif pack.msgType == type_code["messageForward"]:
+                self.messageReceived(pack)
+            elif pack.msgType == type_code["AYT"]:
+                # TODO
+                self.aytReceived(pack)
+            else:  # type not defined
+                print "type not defined on client side"
+                pass
             pass
         pass

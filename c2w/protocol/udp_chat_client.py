@@ -205,7 +205,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         Called **by the controller**  when the user
         has clicked on the leave button in the main room.
         """
-        
+
         LeaveSystemRequest=Packet(frg=0, ack=0, msgType=type_code["disconnectRequest"],
                                 roomType=room_type["notApplicable"],
                                 seqNum=self.seqNum, userId=self.userId,
@@ -299,7 +299,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
             if pack.msgType == type_code["disconnectRequest"]:
                 self.clientProxy.leaveSystemOKONE()
                 self.clientProxy.applicationQuit()
-                
+
             return
         elif pack.ack != 1 and pack.seqNum != self.serverSeqNum:
             pack.turnIntoAck()
