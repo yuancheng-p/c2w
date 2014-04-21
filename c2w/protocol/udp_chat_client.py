@@ -299,19 +299,19 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
             if pack.msgType == type_code["disconnectRequest"]:
                 self.clientProxy.leaveSystemOKONE()
                 self.clientProxy.applicationQuit()
-
             return
-        elif pack.ack != 1 and pack.seqNum != self.serverSeqNum:
+
+        # packet arrived is not an ACK packet
+        if pack.seqNum == self.serverSeqNum:  # expected packet
+            self.serverSeqNum += 1
+        else:  # unexpected packet
+            # This is perhapse a resend packet from the server if the
+            # privous ACK packet is lost. The client should resend the ACK.
+            print "Previous ACK might be lost, resend ACK"
             pack.turnIntoAck()
             self.sendPacket(pack)
             return
 
-        # packet arrived is not an ACK packet
-        if pack.seqNum != self.serverSeqNum:
-            print "received an unexpected packet, aborted"
-            return
-
-        self.serverSeqNum += 1
         if pack.msgType == type_code["movieList"]:
             self.movieListReceived(pack)
             self.state = state_code["loginWaitForUserList"]
@@ -324,7 +324,6 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                 self.updateUserList()
             elif self.state == state_code["inMovieRoom"]:
                 self.updateUserList(movieName=self.currentMovieRoom)
-                pass
             elif self.state == state_code["waitForMovieRoomUserList"]:
                 self.state = state_code["inMovieRoom"]
                 self.changeRoom()

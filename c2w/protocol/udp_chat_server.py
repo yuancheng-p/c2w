@@ -87,7 +87,6 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
 
         # not ack packet, set timeout and send later if packet is not received
         # when an un-ack packet is received, we stop the timeout
-        print "packet.seqNum: ",packet.seqNum, " ## ", "self.seqNums[packet.userId(", packet.userId, ")]: ", self.seqNums[packet.userId]
         if packet.seqNum != self.seqNums[packet.userId]:  # packet is received
             return
         print "###sending packet### : ", packet
@@ -284,9 +283,12 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         self.sendPacket(pack, self.userAddrs[pack.userId])
         userName=self.users[pack.userId].name
         self.serverProxy.removeUser(userName)
-        del self.users[pack.userId]     #delete user from server's base
-        del self.seqNums[pack.userId]
-        del self.clientSeqNums[pack.userId]
+        if pack.userId in self.users.keys():
+            del self.users[pack.userId]  #delete user from server's base
+        if pack.userId in self.seqNums.keys():
+            del self.seqNums[pack.userId]
+        if pack.userId in self.clientSeqNums.keys():
+            del self.clientSeqNums[pack.userId]
         self.informRefreshUserList()
 
     def datagramReceived(self, datagram, (host, port)):
@@ -321,15 +323,22 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             print "Packet aborted because of seqNum error ", pack
 
         # packet arrived is a request
-        if (pack.userId in self.users.keys()
-                and pack.seqNum != self.clientSeqNums[pack.userId]):
-            # TODO this packet might be a resent packet, so send an ack
-            print "an unexpected packet is received, aborted"
-            return
-
-        # only for the registered users
         if pack.userId in self.users.keys():
-            self.clientSeqNums[pack.userId] += 1
+            # receive an expected packet from a registered user
+            if pack.seqNum == self.clientSeqNums[pack.userId]:
+                self.clientSeqNums[pack.userId] += 1
+            else:
+                # this packet might be a resent packet, so send an ack
+                print "Previous ACKs is probably lost, re-handle the case"
+                if pack.msgType == type_code["message"]:
+                    self.forwardMessagePack(pack)
+                elif pack.msgType == type_code["roomRequest"]:
+                    self.changeRoomResponse(pack, (host, port))
+                elif pack.msgType == type_code["disconnectRequest"]:
+                    self.leaveResponse(pack)
+                else:  # type not defined
+                    print "type not defined or error packet"
+                return
 
         # new user
         if (pack.userId not in self.users.keys() and
@@ -341,16 +350,11 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         elif pack.msgType == type_code["roomRequest"]:
             # (back to) mainRoom or (go to) movieRoom
             self.changeRoomResponse(pack, (host, port))
-            pass
         elif pack.msgType == type_code["disconnectRequest"]:
             self.leaveResponse(pack)
-            pass
         elif pack.msgType == type_code["leavePrivateChatRequest"]:
             pass
         elif pack.msgType == type_code["privateChatRequest"]:
             pass
         else:  # type not defined
             print "type not defined or error packet"
-            pass
-
-        pass
