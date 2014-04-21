@@ -82,7 +82,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         if packet.ack == 1:
             print "###sending ACK packet### : ", packet
             buf = util.packMsg(packet)
-            self.transport.write(buf, (host, port))
+            self.transport.write(buf.raw, (host, port))
             return
 
         # not ack packet, set timeout and send later if packet is not received
@@ -92,7 +92,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             return
         print "###sending packet### : ", packet
         buf = util.packMsg(packet)
-        self.transport.write(buf, (host, port))
+        self.transport.write(buf.raw, (host, port))
 
         callCount += 1
         if callCount < attempt_num:

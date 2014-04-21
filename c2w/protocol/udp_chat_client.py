@@ -92,7 +92,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         if packet.ack == 1:
             print "###sending ACK packet###:", packet
             buf = util.packMsg(packet)
-            self.transport.write(buf, (self.serverAddress, self.serverPort))
+            self.transport.write(buf.raw, (self.serverAddress, self.serverPort))
             return
 
         if packet.seqNum != self.seqNum:
@@ -100,7 +100,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
 
         print "###sending packet###:", packet
         buf = util.packMsg(packet)
-        self.transport.write(buf, (self.serverAddress, self.serverPort))
+        self.transport.write(buf.raw, (self.serverAddress, self.serverPort))
         callCount += 1
         if callCount < attempt_num:
             reactor.callLater(timeout, self.sendPacket, packet, callCount)
