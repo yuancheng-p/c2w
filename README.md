@@ -9,8 +9,7 @@ notion was not clear enough. However, you can find both of the specifications
 in this repo.
 
 ## UDP and TCP
-The UDP part is mainly finished by me, but another group member has also contributed.
-We would like to share it with all of you, but the code is not optimized, so I feel happy
+This protocol can be implemented on both UDP and TCP, so you can find that
+there are two implementations here.
+I would like to share my code with all of you, but the code is not optimized, so I feel happy
 if it could help.
-The TCP part is written by the other group members, so it's normal that you
-can't find it here.
