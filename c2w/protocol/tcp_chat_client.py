@@ -198,7 +198,11 @@ class c2wTcpChatClientProtocol(Protocol):
         Called **by the controller**  when the user
         has clicked on the leave button in the main room.
         """
-        pass
+        LeaveSystemRequest=Packet(frg=0, ack=0, msgType=type_code["disconnectRequest"],
+                                roomType=room_type["notApplicable"],
+                                seqNum=self.seqNum, userId=self.userId,
+                                destId=0, length=0, data="")
+        self.sendPacket(LeaveSystemRequest)
 
     def showMainRoom(self):
         """init the main room"""

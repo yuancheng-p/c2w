@@ -238,6 +238,13 @@ class c2wTcpChatServerProtocol(Protocol):
         self.sendMovieList(pack.userId)
         pass
 
+    def leaveResponse(self, pack):
+        pack.turnIntoAck()
+        self.sendPacket(pack)
+        user = self.serverProxy.getUserById(pack.userId)
+        self.serverProxy.removeUser(user.userName)
+        self.informRefreshUserList()
+
     def changeRoomResponse(self, pack):
         if pack.roomType == room_type["movieRoom"]:
             movie = self.serverProxy.getMovieById(pack.destId)
@@ -251,8 +258,7 @@ class c2wTcpChatServerProtocol(Protocol):
 
             # This function will also send user list to the current user
             self.informRefreshUserList(movieName=movie.movieTitle)
-            # FIXME start streaming to all users
-            #self.serverProxy.startStreamingMovie(movie.movieTitle)
+            self.serverProxy.startStreamingMovie(movie.movieTitle)
         elif pack.roomType == room_type["mainRoom"]:
             pack.turnIntoAck()
             self.sendPacket(pack)
