@@ -11,6 +11,7 @@ from c2w.main.constants import ROOM_IDS
 from packet import Packet
 from tables import type_code, type_decode, state_code, error_code
 from tables import error_decode, state_decode, room_type, room_type_decode
+from tables import status_code
 
 logging.basicConfig()
 moduleLogger = logging.getLogger('c2w.protocol.tcp_chat_server_protocol')
@@ -65,8 +66,8 @@ class c2wTcpChatServerProtocol(Protocol):
         self.frameHandler = FrameHandler()
 
         self.users = {}  # userId: user
-        self.seqNums = {}  # userId: seqNum
-        self.clientSeqNums = {}  # userId: seqNum expected to receive
+        self.seqNum = 0
+        self.clientSeqNum = 0  # userId: seqNum expected to receive
         self.currentId = 1  # a variable for distributing user id,
                             # 0 is reserved for login use
         self.movieList = []
@@ -86,7 +87,7 @@ class c2wTcpChatServerProtocol(Protocol):
 
         # not ack packet, set timeout and send later if packet is not received
         # when an un-ack packet is received, we stop the timeout
-        if packet.seqNum != self.seqNums[packet.userId]:  # packet is received
+        if packet.seqNum != self.seqNum:  # packet is received
             return
         print "###sending packet### : ", packet
         buf = util.packMsg(packet)
@@ -113,7 +114,7 @@ class c2wTcpChatServerProtocol(Protocol):
             length = length + 3 + user.length
 
         userListPack = Packet(frg=0, ack=0, msgType=type_code["userList"],
-                              roomType=roomType, seqNum=self.seqNums[userId],
+                              roomType=roomType, seqNum=self.seqNum,
                               userId=userId, destId=0, length=length,
                               data=users)
         self.sendPacket(userListPack)
@@ -132,13 +133,45 @@ class c2wTcpChatServerProtocol(Protocol):
                                   roomType=room_type["movieRoom"],
                                   movieName=movieName)
 
+    def forwardMessagePack(self, pack):
+        """forward a message to related users
+        There are two kinds of messages: mainRoom and movieRoom
+        """
+        ackPack = pack.copy()
+        ackPack.turnIntoAck()
+        self.sendPacket(ackPack)
+        dests = []
+        userList = self.serverProxy.getUserList()
+        if pack.roomType == room_type["mainRoom"]:
+            # forward message to all the available users
+            for user in userList:
+                if user.userChatRoom == ROOM_IDS.MAIN_ROOM:
+                    dests.append(user.userId)
+        elif pack.roomType == room_type["movieRoom"]:
+            # forward message to all the users in the same movie room
+            movie = self.serverProxy.getMovieById(pack.destId)
+            for user in userList:
+                if user.userChatRoom == movie.movieTitle:
+                    dests.append(user.userId)
+        else:
+            print "Unexpected room type when forwarding message!"
+        dests.remove(pack.userId)
+        pack.msgType = type_code["messageForward"]
+        pack.destId = pack.userId  # the packet's sender
+        for destId in dests:
+            pack.userId = destId  # the packet's receiver
+            user = self.serverProxy.getUserById(destId)
+            pack.seqNum = user.userChatInstance.seqNum
+            user.userChatInstance.sendPacket(pack)
+        return
+
     def sendMovieList(self, userId):
         length = 0
         for movie in self.movieList:
             length = length + 2 + movie.length
         movieListPack = Packet(frg=0, ack=0, msgType=3,
                             roomType=room_type["notApplicable"],
-                            seqNum=self.seqNums[userId],
+                            seqNum=self.seqNum,
                             userId=userId, destId=0, length=length,
                             data=self.movieList)
         self.sendPacket(movieListPack)
@@ -158,8 +191,8 @@ class c2wTcpChatServerProtocol(Protocol):
         userId = self.serverProxy.addUser(userName, ROOM_IDS.MAIN_ROOM,
                                  userChatInstance=self,
                                  userAddress=(self.clientAddress, self.clientPort))
-        self.seqNums[userId] = 0  # TODO
-        self.clientSeqNums[userId] = 1  # TODO loginRequest is received
+        self.seqNum = 0
+        self.clientSeqNum = 1# TODO loginRequest is received
         return userId
 
     def loginResponse(self, pack):
@@ -186,7 +219,7 @@ class c2wTcpChatServerProtocol(Protocol):
             Otherwise, we won't consider it's an other user who use
             the same userName to login.
             """
-            if self.seqNums[tempUserId] != 0:
+            if self.seqNum != 0:
                 # the server should send an errorMessage when login failed
                 pack.turnIntoErrorPack(error_code["userNotAvailable"])
                 pack.userId = 0  # send back to the login failed user
@@ -215,8 +248,8 @@ class c2wTcpChatServerProtocol(Protocol):
         for pack in packList:
             print "## packet received:", pack
             # the previous packet is received
-            if pack.ack == 1 and pack.seqNum == self.seqNums[pack.userId]:
-                self.seqNums[pack.userId] += 1
+            if pack.ack == 1 and pack.seqNum == self.seqNum:
+                self.seqNum += 1
                 if pack.msgType == type_code["errorMessage"]:
                     pass
                 if pack.msgType == type_code["AYT"]:
@@ -230,19 +263,19 @@ class c2wTcpChatServerProtocol(Protocol):
                     else:
                         pass
                 return
-            elif pack.ack == 1 and pack.seqNum != self.seqNums[pack.userId]:
+            elif pack.ack == 1 and pack.seqNum != self.seqNum:
                 print "Packet aborted because of seqNum error ", pack
 
             # packet arrived is a request
             if (pack.userId in self.users.keys()
-                    and pack.seqNum != self.clientSeqNums[pack.userId]):
+                    and pack.seqNum != self.clientSeqNum):
                 # TODO this packet might be a resent packet, so send an ack
                 print "an unexpected packet is received, aborted"
                 return
 
             # only for the registered users
             if pack.userId in self.users.keys():
-                self.clientSeqNums[pack.userId] += 1
+                self.clientSeqNum += 1
 
             # new user
             if (pack.userId not in self.users.keys() and
