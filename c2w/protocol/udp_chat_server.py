@@ -162,7 +162,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
                 # the server should send an errorMessage when login failed
                 pack.turnIntoErrorPack(error_code["userNotAvailable"])
                 pack.userId = 0  # send back to the login failed user
-                pack.seqNum = 0  # no seqNum allocated FIXME potential problems
+                pack.seqNum = 0  # no seqNum allocated
                 self.sendPacket(pack, (host, port))
                 return
 
@@ -191,7 +191,6 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
 
             # This function will also send user list to the current user
             self.informRefreshUserList(movieName=movie.movieTitle)
-            # FIXME start streaming to all users
             self.serverProxy.startStreamingMovie(movie.movieTitle)
         elif pack.roomType == room_type["mainRoom"]:
             pack.turnIntoAck()
@@ -232,8 +231,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
                     users[user.userId] = User(user.userName, user.userId,
                                               status=0)
         elif roomType == room_type["mainRoom"]:
-            for user in self.serverProxy.getUserList():
-                users = self.users
+            users = self.users
         else:
             print "Unexpected error!"
 
@@ -306,21 +304,16 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         # the previous packet is received
         if pack.ack == 1 and pack.seqNum == self.seqNums[pack.userId]:
             self.seqNums[pack.userId] += 1
-            if pack.msgType == type_code["errorMessage"]:
-                pass
-            if pack.msgType == type_code["AYT"]:
-                pass
             if pack.msgType == type_code["movieList"]:
                 self.informRefreshUserList()
             if pack.msgType == type_code["userList"]:
                 # login success or change to movie room
                 if pack.seqNum == 1:
                     print "user id=", pack.userId, " login success"
-                else:
-                    pass
             return
         elif pack.ack == 1 and pack.seqNum != self.seqNums[pack.userId]:
             print "Packet aborted because of seqNum error ", pack
+            return
 
         # packet arrived is a request
         if pack.userId in self.users.keys():
