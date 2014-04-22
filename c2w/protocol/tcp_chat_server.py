@@ -212,23 +212,12 @@ class c2wTcpChatServerProtocol(Protocol):
         tempUserId = self.addUser(pack.data)
         # userName exists
         if tempUserId == -1:
-            # get userId by userName, the user exist
-            for userId, user in self.users.items():
-                if user.name == pack.data:
-                    tempUserId = userId
-            """
-            If the user with this userName has already received the
-            loginRequest ACK, its seqNum is more than zero.
-            Otherwise, we won't consider it's an other user who use
-            the same userName to login.
-            """
-            if self.seqNum != 0:
-                # the server should send an errorMessage when login failed
-                pack.turnIntoErrorPack(error_code["userNotAvailable"])
-                pack.userId = 0  # send back to the login failed user
-                pack.seqNum = 0  # no seqNum allocated FIXME potential problems
-                self.sendPacket(pack)
-                return
+            # the server should send an errorMessage when login failed
+            pack.turnIntoErrorPack(error_code["userNotAvailable"])
+            pack.userId = 0  # send back to the login failed user
+            pack.seqNum = 0  # no seqNum allocated FIXME potential problems
+            self.sendPacket(pack)
+            return
 
         pack.userId = tempUserId
         pack.turnIntoAck()
