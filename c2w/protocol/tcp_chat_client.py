@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 from twisted.internet.protocol import Protocol
 import logging
-from twisted.internet import reactor
 from frame_handler import FrameHandler
 import util
-import struct
-from config import attempt_num, timeout
 from c2w.main.constants import ROOM_IDS
 from packet import Packet
-from tables import type_code, type_decode, state_code
-from tables import error_decode, state_decode, room_type, room_type_decode
+from tables import state_code, type_code
+from tables import error_decode, state_decode, room_type
+
 
 logging.basicConfig()
 moduleLogger = logging.getLogger('c2w.protocol.tcp_chat_client_protocol')
@@ -65,17 +63,13 @@ class c2wTcpChatClientProtocol(Protocol):
         self.users = []  # userId: user
         self.state = state_code["disconnected"]
         self.movieRoomId = -1  # not in movie room
-        self.currentMovieIp = None
-        self.currentMoviePort = None
         self.currentMovieRoom = None
 
-    def sendPacket(self, packet, callCount=0):
+    def sendPacket(self, packet):
         """
         param packet: Packet object
         param callCount: only used for the timeout mechanism.
         """
-        # the packet is received
-
         if packet.ack == 1:
             print "###sending ACK packet###:", packet
             buf = util.packMsg(packet)
@@ -88,20 +82,12 @@ class c2wTcpChatClientProtocol(Protocol):
         print "###sending packet###:", packet
         buf = util.packMsg(packet)
         self.transport.write(buf.raw)
-        callCount += 1
-        if callCount < attempt_num:
-            #reactor.callLater(timeout, self.sendPacket, packet, callCount)
-            pass
-        else:
-            print "too many tries, packet:", packet," aborted"
-            return
 
     def userListReceived(self, pack):
         """ save users, and send ack"""
         self.users = pack.data
         pack.turnIntoAck()
         self.sendPacket(pack)
-        pass
 
     def sendLoginRequestOIE(self, userName):
         """
@@ -138,8 +124,6 @@ class c2wTcpChatClientProtocol(Protocol):
            message is handled properly, i.e., it is shown only by the
            client(s) who are in the same room.
         """
-        # This method is called when user clicks "send" button of any room
-        # FIXME private chat is not considered by the GUI?
         destId = 0
         if self.state == state_code["inMainRoom"]:
             roomType = room_type["mainRoom"]
@@ -156,7 +140,6 @@ class c2wTcpChatClientProtocol(Protocol):
                             userId=self.userId, destId=destId,
                             length=len(message), data=message)
         self.sendPacket(messagePack)
-        pass
 
     def sendJoinRoomRequestOIE(self, roomName):
         """
@@ -218,19 +201,16 @@ class c2wTcpChatClientProtocol(Protocol):
         userList = util.adaptUserList(self.users, movieName=movieName)
         self.clientProxy.setUserListONE(userList)
 
-    def findUserNameById(self, userId):
-        return [user.name for user in self.users if user.userId==userId][0]
-
     def movieListReceived(self, pack):
         """save movieList, and send ack"""
         self.movieList = pack.data
         pack.turnIntoAck()
         self.sendPacket(pack)
-        pass
 
     def messageReceived(self, pack):
         # different action for different room type
-        userName = self.findUserNameById(pack.destId)
+        # find username by id
+        userName = [user.name for user in self.users if user.userId==pack.destId][0]
         if (pack.roomType == room_type["mainRoom"] or
                 pack.roomType == room_type["movieRoom"]):
             self.clientProxy.chatMessageReceivedONE(userName, pack.data)
@@ -249,27 +229,25 @@ class c2wTcpChatClientProtocol(Protocol):
         packList = self.frameHandler.extractPackets(data)
 
         for pack in packList:
-            print "-------------------------"
             print "## packet received:", pack
             # the previous packet is received
             if pack.ack == 1 and pack.seqNum == self.seqNum:
                 self.seqNum += 1
-                if pack.msgType == type_code["errorMessage"]:  # error handling
+                if pack.msgType == type_code["errorMessage"]:
                     print "error message received:", error_decode[pack.data]
                     print "state:", state_decode[self.state]
                     if self.state == state_code["loginWaitForAck"]:  # loginFailed
+                        # prompt error message
                         self.clientProxy.connectionRejectedONE(
-                                                error_decode[pack.data])  # back to login window
-                if pack.msgType == type_code["loginRequest"]:  # wait for movieList
+                                                error_decode[pack.data])
+                if pack.msgType == type_code["loginRequest"]:
                     self.state = state_code["loginWaitForMovieList"]
-                    self.userId = pack.userId  # get userId from server
+                    self.userId = pack.userId  # get distributed userId
                 if pack.msgType == type_code["roomRequest"]:
                     if (pack.roomType == room_type["movieRoom"] and
                             self.state == state_code["waitForMovieRoomAck"]):
                         # This packet contains the ip and the port of the movie requested
                         self.state = state_code["waitForMovieRoomUserList"]
-                        self.currentMovieIp = pack.data["ip"]
-                        self.currentMoviePort = pack.data["port"]
                         self.clientProxy.updateMovieAddressPort(self.currentMovieRoom,
                                 pack.data["ip"], pack.data["port"])
                     elif (pack.roomType == room_type["mainRoom"] and
@@ -305,11 +283,5 @@ class c2wTcpChatClientProtocol(Protocol):
                     self.updateUserList()
             elif pack.msgType == type_code["messageForward"]:
                 self.messageReceived(pack)
-            elif pack.msgType == type_code["AYT"]:
-                # TODO
-                self.aytReceived(pack)
             else:  # type not defined
                 print "type not defined on client side"
-                pass
-            pass
-        pass

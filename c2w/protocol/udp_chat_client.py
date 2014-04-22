@@ -6,8 +6,8 @@ from packet import Packet
 import util
 from twisted.internet import reactor
 from config import attempt_num, timeout
-from tables import type_code, type_decode, state_code
-from tables import error_decode, state_decode, room_type, room_type_decode
+from tables import type_code, state_code
+from tables import error_decode, state_decode, room_type
 from c2w.main.constants import ROOM_IDS
 
 logging.basicConfig()
@@ -69,10 +69,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.movieList = []
         self.users = []  # userId: user
         self.state = state_code["disconnected"]
-        self.hasPrivateChat = False
         self.movieRoomId = -1  # not in movie room
-        self.currentMovieIp = None
-        self.currentMoviePort = None
         self.currentMovieRoom = None
 
     def startProtocol(self):
@@ -227,24 +224,15 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.sendPacket(pack)
         pass
 
-    def findUserNameById(self, userId):
-        return [user.name for user in self.users if user.userId==userId][0]
-
-
     def messageReceived(self, pack):
         # different action for different room type
-        userName = self.findUserNameById(pack.destId)
+        # find userName by id
+        userName = [user.name for user in self.users if user.userId==pack.destId][0]
         if (pack.roomType == room_type["mainRoom"] or
                 pack.roomType == room_type["movieRoom"]):
             self.clientProxy.chatMessageReceivedONE(userName, pack.data)
         pack.turnIntoAck()
         self.sendPacket(pack)
-
-    def aytReceived(self, pack):
-        pass
-
-    def abortReceivedPack(self, pack):
-        pass
 
     def showMainRoom(self):
         """init the main room"""
@@ -289,8 +277,6 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                         self.state == state_code["waitForMovieRoomAck"]):
                     # This packet contains the ip and the port of the movie requested
                     self.state = state_code["waitForMovieRoomUserList"]
-                    self.currentMovieIp = pack.data["ip"]
-                    self.currentMoviePort = pack.data["port"]
                     self.clientProxy.updateMovieAddressPort(self.currentMovieRoom,
                             pack.data["ip"], pack.data["port"])
                 elif (pack.roomType == room_type["mainRoom"] and
@@ -334,10 +320,5 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                 self.updateUserList()
         elif pack.msgType == type_code["messageForward"]:
             self.messageReceived(pack)
-        elif pack.msgType == type_code["AYT"]:
-            # TODO
-            self.aytReceived(pack)
         else:  # type not defined
             print "type not defined on client side"
-            pass
-        pass

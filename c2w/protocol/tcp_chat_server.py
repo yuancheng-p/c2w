@@ -1,17 +1,12 @@
 # -*- coding: utf-8 -*-
 from twisted.internet.protocol import Protocol
 import logging
-from twisted.internet import reactor
 import util
 from frame_handler import FrameHandler
-import struct
 from data_strucs import Movie, User
-from config import attempt_num, timeout
 from c2w.main.constants import ROOM_IDS
 from packet import Packet
-from tables import type_code, type_decode, state_code, error_code
-from tables import error_decode, state_decode, room_type, room_type_decode
-from tables import status_code
+from tables import type_code, error_code, room_type
 
 logging.basicConfig()
 moduleLogger = logging.getLogger('c2w.protocol.tcp_chat_server_protocol')
@@ -195,7 +190,7 @@ class c2wTcpChatServerProtocol(Protocol):
                                  userChatInstance=self,
                                  userAddress=(self.clientAddress, self.clientPort))
         self.seqNum = 0
-        self.clientSeqNum = 1# TODO loginRequest is received
+        self.clientSeqNum = 1
         return userId
 
     def loginResponse(self, pack):
@@ -215,7 +210,7 @@ class c2wTcpChatServerProtocol(Protocol):
             # the server should send an errorMessage when login failed
             pack.turnIntoErrorPack(error_code["userNotAvailable"])
             pack.userId = 0  # send back to the login failed user
-            pack.seqNum = 0  # no seqNum allocated FIXME potential problems
+            pack.seqNum = 0  # no seqNum allocated
             self.sendPacket(pack)
             return
 
@@ -278,32 +273,24 @@ class c2wTcpChatServerProtocol(Protocol):
             # the previous packet is received
             if pack.ack == 1 and pack.seqNum == self.seqNum:
                 self.seqNum += 1
-                if pack.msgType == type_code["errorMessage"]:
-                    pass
-                if pack.msgType == type_code["AYT"]:
-                    pass
                 if pack.msgType == type_code["movieList"]:
                     self.informRefreshUserList()
-                if pack.msgType == type_code["userList"]:
+                elif pack.msgType == type_code["userList"]:
                     # login success or change to movie room
                     if pack.seqNum == 1:
                         print "user id=", pack.userId, " login success"
-                    else:
-                        pass
+                else:
+                    print "unexpected ACK packet"
                 return
             elif pack.ack == 1 and pack.seqNum != self.seqNum:
                 print "Packet aborted because of seqNum error ", pack
 
             # packet arrived is a request
-            if (pack.userId in self.users.keys()
-                    and pack.seqNum != self.clientSeqNum):
-                # TODO this packet might be a resent packet, so send an ack
+            if pack.seqNum != self.clientSeqNum:
                 print "an unexpected packet is received, aborted"
                 return
 
-            # only for the registered users
-            if pack.userId in self.users.keys():
-                self.clientSeqNum += 1
+            self.clientSeqNum += 1
 
             # new user
             if (pack.userId not in self.users.keys() and
@@ -315,15 +302,7 @@ class c2wTcpChatServerProtocol(Protocol):
             elif pack.msgType == type_code["roomRequest"]:
                 # (back to) mainRoom or (go to) movieRoom
                 self.changeRoomResponse(pack)
-                pass
             elif pack.msgType == type_code["disconnectRequest"]:
                 self.leaveResponse(pack)
-                pass
-            elif pack.msgType == type_code["leavePrivateChatRequest"]:
-                pass
-            elif pack.msgType == type_code["privateChatRequest"]:
-                pass
             else:  # type not defined
                 print "type not defined or error packet"
-                pass
-        pass
