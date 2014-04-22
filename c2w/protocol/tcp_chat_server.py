@@ -86,20 +86,11 @@ class c2wTcpChatServerProtocol(Protocol):
 
         # not ack packet, set timeout and send later if packet is not received
         # when an un-ack packet is received, we stop the timeout
-        print "packet.seqNum: ",packet.seqNum, " ## ", "self.seqNums[packet.userId(", packet.userId, ")]: ", self.seqNums[packet.userId]
         if packet.seqNum != self.seqNums[packet.userId]:  # packet is received
             return
         print "###sending packet### : ", packet
         buf = util.packMsg(packet)
         self.transport.write(buf.raw)
-
-        callCount += 1
-        if callCount < attempt_num:
-            #reactor.callLater(timeout, self.sendPacket, packet, callCount)
-            pass
-        else:
-            print "too man tries, packet:", packet, " aborted"
-            return
 
     def sendUserList(self, userId, roomType=0, movieName=None):
         """send userList to a user. This user can be in main room and movie room,
@@ -113,7 +104,7 @@ class c2wTcpChatServerProtocol(Protocol):
                                               status=0)
         elif roomType == room_type["mainRoom"]:
             for user in self.serverProxy.getUserList():
-                users = self.users
+                users[user.userId] = User(user.userName, user.userId, status=1)
         else:
             print "Unexpected error!"
 
@@ -134,10 +125,10 @@ class c2wTcpChatServerProtocol(Protocol):
         userList = self.serverProxy.getUserList()
         for user in userList:
             if user.userChatRoom == ROOM_IDS.MAIN_ROOM:
-                self.sendUserList(user.userId,
+                user.userChatInstance.sendUserList(user.userId,
                                   roomType=room_type["mainRoom"])
             elif user.userChatRoom == movieName:
-                self.sendUserList(user.userId,
+                user.userChatInstance.sendUserList(user.userId,
                                   roomType=room_type["movieRoom"],
                                   movieName=movieName)
 
@@ -158,17 +149,17 @@ class c2wTcpChatServerProtocol(Protocol):
         returns: -1 if server is full, otherwise a user id
                  -2 if userName exists
         """
-        if userName in [user.name for user in self.users.values()]:
-            print "### WARNING: username exist!"
-            return -1
+        for user in self.serverProxy.getUserList():
+            if user.userName == userName:
+                print "### WARNING: username exist!"
+                return -1
 
         # Add new user
         userId = self.serverProxy.addUser(userName, ROOM_IDS.MAIN_ROOM,
+                                 userChatInstance=self,
                                  userAddress=(self.clientAddress, self.clientPort))
-        self.users[userId] = User(userName, userId, status=1)
-        self.seqNums[userId] = 0
-        self.clientSeqNums[userId] = 1  # loginRequest is received
-        self.userAddrs[userId] = (self.clientAddress, self.clientPort)
+        self.seqNums[userId] = 0  # TODO
+        self.clientSeqNums[userId] = 1  # TODO loginRequest is received
         return userId
 
     def loginResponse(self, pack):
@@ -178,7 +169,7 @@ class c2wTcpChatServerProtocol(Protocol):
         if pack.seqNum == 1:
             pack.turnIntoErrorPack(error_code["invalidMessage"])
             pack.userId = 0
-            pack.seqNum = 0
+            pack.seqNum = 1
             self.sendPacket(pack)
             return
 

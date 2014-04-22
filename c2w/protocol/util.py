@@ -96,7 +96,7 @@ def unpackMsg(datagram):
         data = struct.unpack_from("B", datagram, offset)[0]
     elif msgType == type_code["movieList"]:
         movieList = []
-        while offset < 6 + header[4]:
+        while offset < 6 + length:
             movie_header_format = "BB"
             movie_header = struct.unpack_from(movie_header_format, datagram, offset)
             offset += 2
@@ -111,7 +111,7 @@ def unpackMsg(datagram):
         pass
     elif msgType == type_code["userList"]:
         userList = []
-        while offset < 6 + header[4]:
+        while offset < 6 + length:
             user_header_format = "BBB"
             user_header = struct.unpack_from(user_header_format, datagram, offset)
             offset += 3
