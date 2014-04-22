@@ -9,7 +9,6 @@ class Packet():
     """Docstring for Packet. """
 
     def __init__(self, frg, ack, msgType, roomType, seqNum, userId, destId, length, data):
-        """@todo: to be defined1. """
         self.frg = frg
         self.ack = ack
         self.msgType = msgType

@@ -49,7 +49,11 @@ state_decode = {
         2: "loginWaitForUserList",
         4: "loginWaitForAck",
         3: "inMainRoom",
-        5: "inMovieRoom"
+        5: "inMovieRoom",
+        6: "waitForMovieRoomAck",
+        7: "waitForMovieRoomUserList",
+        8: "waitForMainRoomAck",
+        9: "waitForMainRoomUserList"
         }
 
 # status code of a user
@@ -75,7 +79,11 @@ type_decode = {
         7: "leavePrivateChatRequest",
         9: "leavePrivateChatRequestForward",
         6: "AYT",
-        14: "errorMessage"
+        14: "errorMessage",
+        4: "unknownPacket1",  # For stream use?
+        2: "unknownPacket2",
+        11: "unknownPacket3",
+        13: "unknownPacket4"
         }
 
 

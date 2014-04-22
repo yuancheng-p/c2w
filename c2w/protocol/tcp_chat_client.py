@@ -171,7 +171,27 @@ class c2wTcpChatClientProtocol(Protocol):
             c2w.main.constants.ROOM_IDS.MAIN_ROOM when the user
             wants to go back to the main room.
         """
-        pass
+        if roomName == ROOM_IDS.MAIN_ROOM:
+            joinRoomRequest = Packet(frg=0, ack=0,
+                                    msgType=type_code["roomRequest"],
+                                    roomType=room_type["mainRoom"],
+                                    seqNum=self.seqNum, userId=self.userId,
+                                    destId=0, length=0, data=None)
+            self.sendPacket(joinRoomRequest)
+            self.state = state_code["waitForMainRoomAck"]
+            self.movieRoomId = -1
+        else:
+            roomId = [movie.roomId for movie in self.movieList
+                                            if movie.movieName==roomName][0]
+            joinRoomRequest = Packet(frg=0, ack=0,
+                                    msgType=type_code["roomRequest"],
+                                    roomType=room_type["movieRoom"],
+                                    seqNum=self.seqNum, userId=self.userId,
+                                    destId=roomId, length=0, data=None)
+            self.sendPacket(joinRoomRequest)
+            self.state = state_code["waitForMovieRoomAck"]
+            self.currentMovieRoom = roomName
+            self.movieRoomId = roomId
 
     def sendLeaveSystemRequestOIE(self):
         """
@@ -254,18 +274,9 @@ class c2wTcpChatClientProtocol(Protocol):
                 if pack.msgType == type_code["disconnectRequest"]:
                     self.clientProxy.leaveSystemOKONE()
                     self.clientProxy.applicationQuit()
-
-                continue
-            elif pack.ack != 1 and pack.seqNum != self.serverSeqNum:
-                pack.turnIntoAck()
-                self.sendPacket(pack)
                 continue
 
-            # packet arrived is not an ACK packet
-            if pack.seqNum != self.serverSeqNum:
-                print "received an unexpected packet, aborted"
-                continue
-
+            # Packet lost will never happen
             self.serverSeqNum += 1
             if pack.msgType == type_code["movieList"]:
                 self.movieListReceived(pack)

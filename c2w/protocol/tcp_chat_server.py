@@ -105,7 +105,10 @@ class c2wTcpChatServerProtocol(Protocol):
                                               status=0)
         elif roomType == room_type["mainRoom"]:
             for user in self.serverProxy.getUserList():
-                users[user.userId] = User(user.userName, user.userId, status=1)
+                status = 0
+                if user.userChatRoom == ROOM_IDS.MAIN_ROOM:
+                    status = 1
+                users[user.userId] = User(user.userName, user.userId, status=status)
         else:
             print "Unexpected error!"
 
@@ -234,6 +237,36 @@ class c2wTcpChatServerProtocol(Protocol):
         # send movieList
         self.sendMovieList(pack.userId)
         pass
+
+    def changeRoomResponse(self, pack):
+        if pack.roomType == room_type["movieRoom"]:
+            movie = self.serverProxy.getMovieById(pack.destId)
+            pack.turnIntoAck(data={"port":movie.moviePort,
+                             "ip":movie.movieIpAddress})
+            self.sendPacket(pack)
+
+            # update user list in the system
+            user = self.serverProxy.getUserById(pack.userId)
+            self.serverProxy.updateUserChatroom(user.userName, movie.movieTitle)
+
+            # This function will also send user list to the current user
+            self.informRefreshUserList(movieName=movie.movieTitle)
+            # FIXME start streaming to all users
+            #self.serverProxy.startStreamingMovie(movie.movieTitle)
+        elif pack.roomType == room_type["mainRoom"]:
+            pack.turnIntoAck()
+            self.sendPacket(pack)
+            # update user list
+            user = self.serverProxy.getUserById(pack.userId)
+            movieName = user.userChatRoom
+            self.serverProxy.updateUserChatroom(user.userName,
+                                                ROOM_IDS.MAIN_ROOM)
+            user = self.serverProxy.getUserById(pack.userId)
+            # This function will also send user list to the current user
+            self.informRefreshUserList(movieName=movieName)
+        else:
+            print "change room error: not expected roomType:", pack.roomType
+        return
 
     def dataReceived(self, data):
         """

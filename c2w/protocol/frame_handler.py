@@ -33,7 +33,7 @@ class FrameHandler:
                     self.headFound = True
                 else:
                     self.currentHead += data
-
+                    data = ""
             # remain msg in the packet
             else:
                 # The packet is separated into many TCP packets
