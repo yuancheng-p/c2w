@@ -11,6 +11,7 @@ from data_strucs import Movie, User
 from config import attempt_num, timeout, max_data_length
 from twisted.internet import reactor
 from c2w.main.constants import ROOM_IDS
+from datagram_handler import ClientDatagramHandler
 
 logging.basicConfig()
 moduleLogger = logging.getLogger('c2w.protocol.udp_chat_server_protocol')
@@ -52,7 +53,8 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         self.lossPr = lossPr
         self.users = {}  # userId: user
         self.seqNums = {}  # userId: seqNum
-        self.clientSeqNums = {}  # userId: seqNum expected to receive
+#        self.clientSeqNums = {}  # userId: seqNum expected to receive
+        self.clientDatagramHandlers = {}  # userId: ClientDatagramHandler
         self.currentId = 1  # a variable for distributing user id,
                             # 0 is reserved for login use
         self.movieList = []
@@ -161,7 +163,8 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
                                  userAddress=(host, port))
         self.users[userId] = User(userName, userId, status=1)
         self.seqNums[userId] = 0
-        self.clientSeqNums[userId] = 1  # loginRequest is received
+#        self.clientSeqNums[userId] = 1  # loginRequest is received
+        self.clientDatagramHandlers[userId] = ClientDatagramHandler(self, (host, port))
         self.userAddrs[userId] = (host, port)
         self.packQueues[userId] = []
         return userId
@@ -333,56 +336,31 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             del self.users[pack.userId]  #delete user from server's base
         if pack.userId in self.seqNums.keys():
             del self.seqNums[pack.userId]
-        if pack.userId in self.clientSeqNums.keys():
-            del self.clientSeqNums[pack.userId]
+#        if pack.userId in self.clientSeqNums.keys():
+#            del self.clientSeqNums[pack.userId]
+        if pack.userId in self.clientDatagramHandlers.keys():
+            del self.clientDatagramHandlers[pack.userId]
         self.informRefreshUserList()
 
-    def datagramReceived(self, datagram, (host, port)):
-        """
-        :param string datagram: the payload of the UDP packet.
-        :param host: the IP address of the source.
-        :param port: the source port.
-
-        Called **by Twisted** when the server has received a UDP
-        packet.
-        """
-        pack = util.unpackMsg(datagram)
-        print "###packet received: ", pack
-
-        # the previous packet is received
-        if pack.ack == 1 and pack.seqNum == self.seqNums[pack.userId]:
-            self.seqNums[pack.userId] += 1
-            if pack.frg == 1:
-                self.sendPackBuf(self.extractCachedPacket(pack.userId), (host, port))
-                return
-            if pack.msgType == type_code["movieList"]:
-                self.informRefreshUserList()
-            if pack.msgType == type_code["userList"]:
-                # login success or change to movie room
-                if pack.seqNum == 1:
-                    print "user id=", pack.userId, " login success"
-            return
-        elif pack.ack == 1 and pack.seqNum != self.seqNums[pack.userId]:
-            print "Packet aborted because of seqNum error ", pack
-            return
-
+    def handelRequest(self, pack, (host, port)):
         # packet arrived is a request
-        if pack.userId in self.users.keys():
-            # receive an expected packet from a registered user
-            if pack.seqNum == self.clientSeqNums[pack.userId]:
-                self.clientSeqNums[pack.userId] += 1
-            else:
-                # this packet might be a resent packet, so send an ack
-                print "Previous ACKs is probably lost, re-handle the case"
-                if pack.msgType == type_code["message"]:
-                    self.forwardMessagePack(pack)
-                elif pack.msgType == type_code["roomRequest"]:
-                    self.changeRoomResponse(pack, (host, port))
-                elif pack.msgType == type_code["disconnectRequest"]:
-                    self.leaveResponse(pack)
-                else:  # type not defined
-                    print "type not defined or error packet"
-                return
+#        if pack.userId in self.users.keys():
+#            # receive an expected packet from a registered user
+#            if pack.seqNum == self.clientSeqNums[pack.userId]:
+#                self.clientSeqNums[pack.userId] += 1
+#                pass
+#            else:
+#                # this packet might be a resent packet, so send an ack
+#                print "Previous ACKs is probably lost, re-handle the case"
+#                if pack.msgType == type_code["message"]:
+#                    self.forwardMessagePack(pack)
+#                elif pack.msgType == type_code["roomRequest"]:
+#                    self.changeRoomResponse(pack, (host, port))
+#                elif pack.msgType == type_code["disconnectRequest"]:
+#                    self.leaveResponse(pack)
+#                else:  # type not defined
+#                    print "type not defined or error packet"
+#                return
 
         # new user
         if (pack.userId not in self.users.keys() and
@@ -402,3 +380,40 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             pass
         else:  # type not defined
             print "type not defined or error packet"
+        pass
+
+    def datagramReceived(self, datagram, (host, port)):
+        """
+        :param string datagram: the payload of the UDP packet.
+        :param host: the IP address of the source.
+        :param port: the source port.
+
+        Called **by Twisted** when the server has received a UDP
+        packet.
+        """
+        header = util.unpackHeader(datagram)
+        pack = self.clientDatagramHandlers[header.userId].unpackMsg(datagram)
+        #pack = util.unpackMsg(datagram)
+        if pack == None:
+            return
+
+        print "###packet received: ", pack
+
+        # the previous packet is received
+        if pack.ack == 1 and pack.seqNum == self.seqNums[pack.userId]:
+            self.seqNums[pack.userId] += 1
+            if pack.frg == 1:
+                self.sendPackBuf(self.extractCachedPacket(pack.userId), (host, port))
+                return
+            if pack.msgType == type_code["movieList"]:
+                self.informRefreshUserList()
+            if pack.msgType == type_code["userList"]:
+                # login success or change to movie room
+                if pack.seqNum == 1:
+                    print "user id=", pack.userId, " login success"
+            return
+        elif pack.ack == 1 and pack.seqNum != self.seqNums[pack.userId]:
+            print "Packet aborted because of seqNum error ", pack
+            return
+
+        self.handelRequest(pack, (host, port))

@@ -280,6 +280,8 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
             elif pack.msgType == type_code["disconnectRequest"]:
                 self.clientProxy.leaveSystemOKONE()
                 self.clientProxy.applicationQuit()
+            elif pack.msgType == type_code["message"]:
+                pass
             else:
                 print "Unexpected type of ACK packet"
             return
