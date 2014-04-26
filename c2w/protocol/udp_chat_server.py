@@ -8,7 +8,7 @@ from tables import type_code, error_code
 from tables import room_type
 from tables import status_code
 from data_strucs import Movie, User
-from config import attempt_num, timeout
+from config import attempt_num, timeout, max_data_length
 from twisted.internet import reactor
 from c2w.main.constants import ROOM_IDS
 
@@ -57,6 +57,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
                             # 0 is reserved for login use
         self.movieList = []
         self.userAddrs = {}  # userId: (host, addr)
+        self.packQueues = {}  # userId: list of frg packets
 
 
     def initMovieList(self):
@@ -76,30 +77,75 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         DatagramProtocol.transport = self.transport
         self.initMovieList()
 
-    def sendPacket(self, packet, (host, port), callCount=0):
-        # send an ack packet to registered or non registered user
-        # ack packet is sent only once
-        if packet.ack == 1:
-            print "###sending ACK packet### : ", packet
-            buf = util.packMsg(packet)
-            self.transport.write(buf.raw, (host, port))
+    def sendPackBuf(self, packBuf, (host, port), callCount=0):
+        """
+        Send a binary packet, fragmented or not.
+        Resend if timeout passed.
+        the packBuf should be a string.
+        """
+        header = util.unpackHeader(packBuf)
+        print "###sending msg, with header:", header
+        print "###sending buf:", packBuf
+        # send ack packet
+        if header.ack == 1:
+            self.transport.write(packBuf, (host, port))
             return
 
         # not ack packet, set timeout and send later if packet is not received
         # when an un-ack packet is received, we stop the timeout
-        if packet.seqNum != self.seqNums[packet.userId]:  # packet is received
+        if header.seqNum != self.seqNums[header.userId]:  # packet is received
             return
-        print "###sending packet### : ", packet
-        buf = util.packMsg(packet)
-        self.transport.write(buf.raw, (host, port))
 
+        # send the buf
+        self.transport.write(packBuf, (host, port))
         callCount += 1
         if callCount < attempt_num:
-            reactor.callLater(timeout, self.sendPacket,
-                              packet, (host, port), callCount)
+            reactor.callLater(timeout, self.sendPackBuf,
+                              packBuf, (host, port), callCount)
         else:
-            print "too man tries, packet:", packet, " aborted"
+            print "too man tries, packet aborted"
             return
+
+    def sendPacket(self, pack, (host, port)):
+        # send an ack packet to registered or non registered user
+        # ack packet is sent only once
+        print "###sending packet:", pack
+        if pack.ack == 1:
+            print "###sending ACK packet### : ", pack
+            buf = util.packMsg(pack)
+            self.transport.write(buf.raw, (host, port))
+            return
+
+        # prepare a list of binary packet to send
+        dataBuf = util.packMsg(pack)[6:]
+        seqNum = pack.seqNum
+        while len(dataBuf) > 0:
+            if len(dataBuf) > max_data_length:
+                tmpHeader = Packet(1, pack.ack, pack.msgType, pack.roomType,
+                        seqNum, pack.userId, pack.destId, max_data_length, None)
+                headerBuf = util.packHeader(tmpHeader).raw
+                packBuf = headerBuf + dataBuf[:max_data_length]
+                dataBuf = dataBuf[max_data_length:]
+            else:  # last frgment
+                tmpHeader = Packet(0, pack.ack, pack.msgType, pack.roomType,
+                        seqNum, pack.userId, pack.destId, len(dataBuf), None)
+                headerBuf = util.packHeader(tmpHeader).raw
+                packBuf = headerBuf + dataBuf
+                dataBuf = ""
+            seqNum += 1
+            self.packQueues[pack.userId].append(packBuf)
+        self.sendPackBuf(self.extractCachedPacket(pack.userId), (host, port))
+
+    def extractCachedPacket(self, userId):
+        if self.packQueues[userId] == []:
+            print "No cached packet!"
+            return None
+        else:
+            packet = self.packQueues[userId][0]
+            self.packQueues[userId] = self.packQueues[userId][1:]
+            return packet
+
+
 
     def addUser(self, userName, (host, port)):
         """ add a new user into userList
@@ -117,6 +163,7 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         self.seqNums[userId] = 0
         self.clientSeqNums[userId] = 1  # loginRequest is received
         self.userAddrs[userId] = (host, port)
+        self.packQueues[userId] = []
         return userId
 
     def informRefreshUserList(self, movieName=None):
@@ -135,7 +182,8 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
 
 
     def loginResponse(self, pack, (host, port)):
-        """The pack is a loginRequest packet
+        """
+        The pack is a loginRequest packet
         """
         # Just for passing the uselesse test of duplicate
         if pack.seqNum == 1:
@@ -304,6 +352,9 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
         # the previous packet is received
         if pack.ack == 1 and pack.seqNum == self.seqNums[pack.userId]:
             self.seqNums[pack.userId] += 1
+            if pack.frg == 1:
+                self.sendPackBuf(self.extractCachedPacket(pack.userId), (host, port))
+                return
             if pack.msgType == type_code["movieList"]:
                 self.informRefreshUserList()
             if pack.msgType == type_code["userList"]:

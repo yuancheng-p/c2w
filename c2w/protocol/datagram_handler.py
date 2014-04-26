@@ -31,37 +31,37 @@ class DatagramHandler():
         return
 
     def unpackMsg(self, datagram):
-        pack = util.unpackMsg(datagram)
-        if pack.ack == 1:
-            return pack
+        packHeader = util.unpackHeader(datagram)
+        if packHeader.ack == 1:
+            return util.unpackMsg(datagram)
         else:
-            if pack.seqNum == self.serverSeqNum:
+            if packHeader.seqNum == self.serverSeqNum:
                 self.serverSeqNum += 1
-                self.sendAck(pack)
+                self.sendAck(packHeader)
             else:
                 print "Unexpected seqNum packet received, aborted"
-                self.sendAck(pack)
+                self.sendAck(packHeader)
                 return
 
-            if pack.frg == 1:
+            if packHeader.frg == 1:
                 if self.header == None:  # first frg packet
                     self.header = util.unpackHeader(datagram)
                 else:
-                    self.header.length += pack.length
+                    self.header.length += packHeader.length
                 # save current buf
                 self.dataBuf += datagram[6:]
-            elif pack.frg == 0 and self.header != None:  # last frgment packet
-                self.header.length += pack.length
-                self.header.seqNum = pack.seqNum
+            elif packHeader.frg == 0 and self.header != None:  # last frgment packet
+                self.header.length += packHeader.length
+                self.header.seqNum = packHeader.seqNum
                 self.header.frg = 0
                 self.dataBuf += datagram[6:]
-                headerBuf = util.packHeader(self.header)
-                finalPack = util.packMsg(headerBuf + self.dataBuf)
+                headerBuf = util.packHeader(self.header).raw
+                finalPackBuf = headerBuf + self.dataBuf
                 # reset attributes before return packet
                 self.dataBuf = ""
                 self.header = None
-                return finalPack
-            elif pack.frg == 0 and self.header == None:  # not a frgment packet
-                return pack
+                return util.unpackMsg(finalPackBuf)
+            elif packHeader.frg == 0 and self.header == None:  # not a frgment packet
+                return util.unpackMsg(datagram)
             else:
                 print "Unexpected error when unpacking datagram"

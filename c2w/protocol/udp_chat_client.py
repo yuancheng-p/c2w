@@ -61,9 +61,7 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.serverPort = serverPort
         self.clientProxy = clientProxy
         self.lossPr = lossPr
-        #self.roomType = [3]  # user's current room types
         self.seqNum = 0  # sequence number for the next packet to be sent
-        self.serverSeqNum = 0  # sequence number of the next not ack packet
         self.dHandler = DatagramHandler(self)
         self.userId = 0
         self.userName = ""
