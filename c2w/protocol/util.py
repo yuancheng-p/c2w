@@ -5,6 +5,25 @@ from tables import type_code, room_type
 from data_strucs import Movie, User
 from c2w.main.constants import ROOM_IDS
 
+def packHeader(pack):
+    """
+    Pack a header into a 6 bytes buf.
+    """
+    byte_1 = (pack.frg << 7) | (pack.ack << 6) | (pack.msgType << 2) | pack.roomType
+
+    buf_len = 6
+    buf = ctypes.create_string_buffer(buf_len)
+
+    header = "!BBBBH"
+    offset = 0
+    struct.pack_into(header, buf, offset,
+                    byte_1,
+                    pack.seqNum,
+                    pack.userId,
+                    pack.destId,
+                    pack.length)
+    return buf
+
 def packMsg(pack):
     """
     """
@@ -148,9 +167,9 @@ def unpackMsg(datagram):
 
 def adaptMovieList(movieList):
     """change movieList into GUI adapted format"""
-    #FIXME Howw to know ip addr and port number of each movie?
     movies = []
     for movie in movieList:
+        # the ip and port number will be refreshed when join in a movie room
         movies.append((movie.movieName, "127.0.0.1", "1991"))
     return movies
 

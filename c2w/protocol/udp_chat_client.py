@@ -9,6 +9,7 @@ from config import attempt_num, timeout
 from tables import type_code, state_code
 from tables import error_decode, state_decode, room_type
 from c2w.main.constants import ROOM_IDS
+from datagram_handler import DatagramHandler
 
 logging.basicConfig()
 moduleLogger = logging.getLogger('c2w.protocol.udp_chat_client_protocol')
@@ -60,9 +61,8 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.serverPort = serverPort
         self.clientProxy = clientProxy
         self.lossPr = lossPr
-        #self.roomType = [3]  # user's current room types
         self.seqNum = 0  # sequence number for the next packet to be sent
-        self.serverSeqNum = 0  # sequence number of the next not ack packet
+        self.dHandler = DatagramHandler(self)
         self.userId = 0
         self.userName = ""
         self.packReceived = False
@@ -208,16 +208,12 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         self.sendPacket(LeaveSystemRequest)
 
     def movieListReceived(self, pack):
-        """save movieList, and send ack"""
+        """save movieList"""
         self.movieList = pack.data
-        pack.turnIntoAck()
-        self.sendPacket(pack)
 
     def userListReceived(self, pack):
-        """ save users, and send ack"""
+        """save users"""
         self.users = pack.data
-        pack.turnIntoAck()
-        self.sendPacket(pack)
 
     def messageReceived(self, pack):
         # different action for different room type
@@ -226,8 +222,6 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         if (pack.roomType == room_type["mainRoom"] or
                 pack.roomType == room_type["movieRoom"]):
             self.clientProxy.chatMessageReceivedONE(userName, pack.data)
-        pack.turnIntoAck()
-        self.sendPacket(pack)
 
     def showMainRoom(self):
         """init the main room"""
@@ -252,7 +246,9 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         Called **by Twisted** when the client has received a UDP
         packet.
         """
-        pack = util.unpackMsg(datagram)
+        pack = self.dHandler.unpackMsg(datagram)
+        if pack == None:
+            return
         print "####packet received:", pack
 
         # the previous packet is received
@@ -286,17 +282,6 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                 self.clientProxy.applicationQuit()
             else:
                 print "Unexpected type of ACK packet"
-            return
-
-        # packet arrived is not an ACK packet
-        if pack.seqNum == self.serverSeqNum:  # expected packet
-            self.serverSeqNum += 1
-        else:  # unexpected packet
-            # This is perhapse a resend packet from the server if the
-            # privous ACK packet is lost. The client should resend the ACK.
-            print "Previous ACK might be lost, resend ACK"
-            pack.turnIntoAck()
-            self.sendPacket(pack)
             return
 
         if pack.msgType == type_code["movieList"]:
