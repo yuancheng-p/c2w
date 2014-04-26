@@ -143,7 +143,6 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
            client(s) who are in the same room.
         """
         # This method is called when user clicks "send" button of any room
-        # FIXME private chat is not considered by the GUI?
         destId = 0
         if self.state == state_code["inMainRoom"]:
             roomType = room_type["mainRoom"]
@@ -160,7 +159,6 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                             userId=self.userId, destId=destId,
                             length=len(message), data=message)
         self.sendPacket(messagePack)
-        pass
 
     def sendJoinRoomRequestOIE(self, roomName):
         """
@@ -208,21 +206,18 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                                 seqNum=self.seqNum, userId=self.userId,
                                 destId=0, length=0, data="")
         self.sendPacket(LeaveSystemRequest)
-        pass
 
     def movieListReceived(self, pack):
         """save movieList, and send ack"""
         self.movieList = pack.data
         pack.turnIntoAck()
         self.sendPacket(pack)
-        pass
 
     def userListReceived(self, pack):
         """ save users, and send ack"""
         self.users = pack.data
         pack.turnIntoAck()
         self.sendPacket(pack)
-        pass
 
     def messageReceived(self, pack):
         # different action for different room type
@@ -269,10 +264,12 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                 if self.state == state_code["loginWaitForAck"]:  # loginFailed
                     self.clientProxy.connectionRejectedONE(
                                             error_decode[pack.data])  # back to login window
-            if pack.msgType == type_code["loginRequest"]:  # wait for movieList
+                else:
+                    print "unexpected error code"
+            elif pack.msgType == type_code["loginRequest"]:  # wait for movieList
                 self.state = state_code["loginWaitForMovieList"]
                 self.userId = pack.userId  # get userId from server
-            if pack.msgType == type_code["roomRequest"]:
+            elif pack.msgType == type_code["roomRequest"]:
                 if (pack.roomType == room_type["movieRoom"] and
                         self.state == state_code["waitForMovieRoomAck"]):
                     # This packet contains the ip and the port of the movie requested
@@ -282,9 +279,13 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                 elif (pack.roomType == room_type["mainRoom"] and
                         self.state == state_code["waitForMainRoomAck"]):
                     self.state = state_code["waitForMainRoomUserList"]
-            if pack.msgType == type_code["disconnectRequest"]:
+                else:
+                    print "unexpected roomrequest ACK"
+            elif pack.msgType == type_code["disconnectRequest"]:
                 self.clientProxy.leaveSystemOKONE()
                 self.clientProxy.applicationQuit()
+            else:
+                print "Unexpected type of ACK packet"
             return
 
         # packet arrived is not an ACK packet
@@ -318,6 +319,8 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                 self.state = state_code["inMainRoom"]
                 self.changeRoom()
                 self.updateUserList()
+            else:
+                print "unexpected userList"
         elif pack.msgType == type_code["messageForward"]:
             self.messageReceived(pack)
         else:  # type not defined

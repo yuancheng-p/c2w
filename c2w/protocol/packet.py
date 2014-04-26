@@ -6,8 +6,6 @@ import copy
 
 class Packet():
 
-    """Docstring for Packet. """
-
     def __init__(self, frg, ack, msgType, roomType, seqNum, userId, destId, length, data):
         self.frg = frg
         self.ack = ack
@@ -29,6 +27,7 @@ userId:%d; destId:%d; length:%d; data(%s):%s]" % (
                     self.length, type(self.data), repr(self.data))
 
     def turnIntoAck(self, data=""):
+        # FIXME potential problems
         self.ack = 1
         self.data = data
         if (self.msgType == type_code["roomRequest"] and
@@ -40,7 +39,7 @@ userId:%d; destId:%d; length:%d; data(%s):%s]" % (
         return
 
     def turnIntoErrorPack(self, error_type):
-        """ errer message is a special type of ack packet
+        """ error message is a special type of ACK packet
         """
         self.ack = 1
         self.msgType = type_code["errorMessage"]
