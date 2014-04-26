@@ -85,7 +85,6 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
         param callCount: only used for the timeout mechanism.
         """
         # the packet is received
-
         if packet.ack == 1:
             print "###sending ACK packet###:", packet
             buf = util.packMsg(packet)
@@ -207,14 +206,6 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
                                 destId=0, length=0, data="")
         self.sendPacket(LeaveSystemRequest)
 
-    def movieListReceived(self, pack):
-        """save movieList"""
-        self.movieList = pack.data
-
-    def userListReceived(self, pack):
-        """save users"""
-        self.users = pack.data
-
     def messageReceived(self, pack):
         # different action for different room type
         # find userName by id
@@ -280,15 +271,19 @@ class c2wUdpChatClientProtocol(DatagramProtocol):
             elif pack.msgType == type_code["disconnectRequest"]:
                 self.clientProxy.leaveSystemOKONE()
                 self.clientProxy.applicationQuit()
+            elif pack.msgType == type_code["message"]:
+                pass
             else:
                 print "Unexpected type of ACK packet"
             return
 
         if pack.msgType == type_code["movieList"]:
-            self.movieListReceived(pack)
+            # save movieList
+            self.movieList = pack.data
             self.state = state_code["loginWaitForUserList"]
         elif pack.msgType == type_code["userList"]:
-            self.userListReceived(pack)
+            # save userList
+            self.users = pack.data
             if self.state == state_code["loginWaitForUserList"]:
                 self.state = state_code["inMainRoom"]
                 self.showMainRoom()

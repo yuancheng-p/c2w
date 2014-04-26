@@ -24,7 +24,7 @@ class c2wTcpChatClientProtocol(Protocol):
         :param serverPort: The port number used by the c2w server,
             given by the user.
 
-        Class implementing the UDP version of the client protocol.
+        Class implementing the TCP version of the client protocol.
 
         .. note::
             You must write the implementation of this class.

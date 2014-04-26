@@ -204,7 +204,9 @@ class c2wUdpChatServerProtocol(DatagramProtocol):
             If the user with this userName has already received the
             loginRequest ACK, its seqNum is more than zero.
             Otherwise, we won't consider it's an other user who use
-            the same userName to login.
+            the same userName to login, which means when the user exists in the
+            system but with seqNum equals 0, we can't pass the condition below,
+            so we will resend an ACK.
             """
             if self.seqNums[tempUserId] != 0:
                 # the server should send an errorMessage when login failed
